@@ -9,13 +9,16 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
 
 ### Team Roles & Modular Architecture
 
-* **Member 1:** Database Schema, JDBC Connectivity, Model/Entities & Migrations
+* **Member 1:** Database Schema, JDBC Connectivity, Model/Entities & Migrations (`database/schema.sql`)
 * **Member 2 (Current Module):** UI, Login & User Management
   * Java Swing Authentication Frames (`LoginFrame`)
   * Customer & Admin Login workflows with input validation
   * Customer Registration with form validation
   * Application Dashboard Shell & Navigation (`DashboardFrame`)
-  * Customer Profile and Order History screens
+  * Customer Profile Management (View, Edit Contact Info, Change Password Dialogs)
+  * Customer Order History Screen with Status Filtering & Order Cancellation
+  * Order Details & Invoice Modal (`OrderDetailsDialog`)
+  * Centralized Form Validation Utility (`ValidationUtil`)
 * **Member 3:** Catalog, Cart & Order Placement Services
 * **Member 4:** Inventory Consistency, Invoices & Sales Reporting
 
@@ -32,6 +35,9 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
 
 ### How to Run
 
+#### Using the One-Click Script (Windows)
+Double-click `run.bat` in the project root to launch the application.
+
 #### Using Maven (Recommended)
 ```bash
 # 1. Compile the application
@@ -43,8 +49,8 @@ mvn exec:java
 
 #### Using Standard Java CLI
 ```bash
-# Compile to a bin directory
-javac -d bin src/main/java/com/qveto/ecommerce/ui/*.java src/main/java/com/qveto/ecommerce/*.java
+# Compile all modules to a bin directory
+javac -d bin src/main/java/com/qveto/ecommerce/model/*.java src/main/java/com/qveto/ecommerce/util/*.java src/main/java/com/qveto/ecommerce/ui/*.java src/main/java/com/qveto/ecommerce/*.java
 
 # Run the application
 java -cp bin com.qveto.ecommerce.Main
@@ -54,9 +60,9 @@ java -cp bin com.qveto.ecommerce.Main
 
 ### Demo Accounts for Review & Testing
 
-| Role | Username / Email | Password |
-| :--- | :--- | :--- |
-| **Customer** | `customer@qveto.com` | `pass123` |
-| **Admin** | `admin` | `admin123` |
+| Role | Username / Email | Password | Features Accessible |
+| :--- | :--- | :--- | :--- |
+| **Customer** | `customer@qveto.com` | `pass123` | Product catalog, cart, order history, cancel orders, edit profile, change password |
+| **Admin** | `admin` | `admin123` | Inventory catalog management, customer orders management, sales KPI overview |
 
 *(You can also use the **Register** tab to create a new customer account with full input validation).*
