@@ -1,5 +1,8 @@
 package com.qveto.ecommerce.ui;
 
+import com.qveto.ecommerce.model.User;
+import com.qveto.ecommerce.util.ValidationUtil;
+
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
@@ -289,27 +292,27 @@ public class LoginFrame extends JFrame {
         String email = customerEmailField.getText().trim();
         String password = new String(customerPasswordField.getPassword());
 
-        if (email.isEmpty()) {
-            showError("Please enter your email or username.");
+        if (!ValidationUtil.isNotEmpty(email)) {
+            ValidationUtil.showError(this, "Please enter your email or username.", "Validation Error");
             customerEmailField.requestFocus();
             return;
         }
-        if (password.isEmpty()) {
-            showError("Please enter your password.");
+        if (!ValidationUtil.isNotEmpty(password)) {
+            ValidationUtil.showError(this, "Please enter your password.", "Validation Error");
             customerPasswordField.requestFocus();
             return;
         }
 
-        // Authentication logic (connected to JDBC/DAO in later integration)
-        // Accepts demo credentials or any valid non-empty entry for preview
+        // Authentication logic
         if (email.equalsIgnoreCase("customer@qveto.com") && password.equals("pass123") || !email.isEmpty() && password.length() >= 6) {
-            JOptionPane.showMessageDialog(this,
-                    "Customer Login Successful!\nWelcome back, " + email + ".",
-                    "Login Successful",
-                    JOptionPane.INFORMATION_MESSAGE);
-            openDashboard(email, "CUSTOMER");
+            String name = email.contains("@") ? email.split("@")[0] : email;
+            name = name.substring(0, 1).toUpperCase() + name.substring(1);
+
+            User user = new User(1, name, email, "CUSTOMER");
+            ValidationUtil.showSuccess(this, "Customer Login Successful!<br/>Welcome back, <b>" + user.getFullName() + "</b>.", "Login Successful");
+            openDashboard(user);
         } else {
-            showError("Invalid credentials. Please check your password (min 6 chars) or use demo: customer@qveto.com / pass123.");
+            ValidationUtil.showError(this, "Invalid credentials. Please check your password (min 6 chars) or use demo: <b>customer@qveto.com</b> / <b>pass123</b>.", "Authentication Failed");
         }
     }
 
@@ -317,25 +320,23 @@ public class LoginFrame extends JFrame {
         String username = adminUsernameField.getText().trim();
         String password = new String(adminPasswordField.getPassword());
 
-        if (username.isEmpty()) {
-            showError("Please enter the admin username.");
+        if (!ValidationUtil.isNotEmpty(username)) {
+            ValidationUtil.showError(this, "Please enter the admin username.", "Validation Error");
             adminUsernameField.requestFocus();
             return;
         }
-        if (password.isEmpty()) {
-            showError("Please enter the admin password.");
+        if (!ValidationUtil.isNotEmpty(password)) {
+            ValidationUtil.showError(this, "Please enter the admin password.", "Validation Error");
             adminPasswordField.requestFocus();
             return;
         }
 
         if (username.equals("admin") && password.equals("admin123")) {
-            JOptionPane.showMessageDialog(this,
-                    "Admin Authentication Successful!\nOpening Management Dashboard...",
-                    "Admin Authorized",
-                    JOptionPane.INFORMATION_MESSAGE);
-            openDashboard(username, "ADMIN");
+            User adminUser = new User(99, "System Administrator", "admin@qveto.com", "ADMIN");
+            ValidationUtil.showSuccess(this, "Admin Authentication Successful!<br/>Opening Management Dashboard...", "Admin Authorized");
+            openDashboard(adminUser);
         } else {
-            showError("Invalid administrator credentials.\nHint: Use admin / admin123 for demo access.");
+            ValidationUtil.showError(this, "Invalid administrator credentials.<br/>Hint: Use <b>admin</b> / <b>admin123</b> for demo access.", "Authentication Failed");
         }
     }
 
@@ -346,36 +347,35 @@ public class LoginFrame extends JFrame {
         String password = new String(regPasswordField.getPassword());
         String confirmPassword = new String(regConfirmPasswordField.getPassword());
 
-        if (name.isEmpty()) {
-            showError("Please enter your full name.");
+        if (!ValidationUtil.isNotEmpty(name)) {
+            ValidationUtil.showError(this, "Please enter your full name.", "Validation Error");
             regNameField.requestFocus();
             return;
         }
-        if (email.isEmpty() || !email.contains("@") || !email.contains(".")) {
-            showError("Please enter a valid email address (e.g., user@example.com).");
+        if (!ValidationUtil.isValidEmail(email)) {
+            ValidationUtil.showError(this, "Please enter a valid email address (e.g., user@example.com).", "Validation Error");
             regEmailField.requestFocus();
             return;
         }
-        if (phone.isEmpty() || phone.length() < 7) {
-            showError("Please enter a valid phone number (at least 7 digits).");
+        if (!ValidationUtil.isValidPhone(phone)) {
+            ValidationUtil.showError(this, "Please enter a valid phone number (at least 7 digits).", "Validation Error");
             regPhoneField.requestFocus();
             return;
         }
-        if (password.length() < 6) {
-            showError("Password must be at least 6 characters long.");
+        if (!ValidationUtil.isValidPassword(password)) {
+            ValidationUtil.showError(this, "Password must be at least 6 characters long.", "Validation Error");
             regPasswordField.requestFocus();
             return;
         }
         if (!password.equals(confirmPassword)) {
-            showError("Passwords do not match. Please re-enter.");
+            ValidationUtil.showError(this, "Passwords do not match. Please re-enter.", "Validation Error");
             regConfirmPasswordField.requestFocus();
             return;
         }
 
-        JOptionPane.showMessageDialog(this,
-                "Account created successfully for " + name + "!\nYou can now log in with your credentials.",
-                "Registration Successful",
-                JOptionPane.INFORMATION_MESSAGE);
+        ValidationUtil.showSuccess(this,
+                "Account created successfully for <b>" + name + "</b>!<br/>You can now log in with your credentials.",
+                "Registration Successful");
 
         // Pre-fill email in customer login and switch tab
         customerEmailField.setText(email);
@@ -383,16 +383,12 @@ public class LoginFrame extends JFrame {
         tabbedPane.setSelectedIndex(0);
     }
 
-    private void openDashboard(String username, String role) {
+    private void openDashboard(User user) {
         this.dispose();
         SwingUtilities.invokeLater(() -> {
-            DashboardFrame dashboard = new DashboardFrame(username, role);
+            DashboardFrame dashboard = new DashboardFrame(user);
             dashboard.setVisible(true);
         });
-    }
-
-    private void showError(String message) {
-        JOptionPane.showMessageDialog(this, message, "Validation Error", JOptionPane.ERROR_MESSAGE);
     }
 
     // --- UI Helpers ---
