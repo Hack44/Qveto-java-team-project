@@ -10,6 +10,7 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -17,14 +18,25 @@ import java.util.List;
  * Main Application Dashboard & Navigation Shell.
  * 
  * Developed for Member 2 tasks:
- * - Customer Profile screen with Edit Information & Password Change workflows
+ * - Interactive Shopping Cart with live total calculation & quantity updates
+ * - Checkout workflow connecting Cart to Order History
+ * - Customer Profile management (Edit contact/address, change password)
  * - Order History screen with status filtering, invoice modal, and order cancellation
- * - Application-wide form validation and user-friendly alerts
  */
 public class DashboardFrame extends JFrame {
 
     private final User currentUser;
     private final List<Order> customerOrders;
+    private final List<OrderItem> shoppingCart;
+
+    // Central navigation tabs
+    private JTabbedPane tabbedPane;
+
+    // Cart UI components
+    private JPanel cartRootPanel;
+    private DefaultTableModel cartTableModel;
+    private JTable cartTable;
+    private JLabel cartTotalSummaryLabel;
 
     // Profile UI components for dynamic refresh
     private JLabel profileNameVal;
@@ -41,6 +53,7 @@ public class DashboardFrame extends JFrame {
     public DashboardFrame(User user) {
         this.currentUser = user;
         this.customerOrders = initializeSampleOrders();
+        this.shoppingCart = new ArrayList<>();
         initComponents();
     }
 
@@ -51,8 +64,8 @@ public class DashboardFrame extends JFrame {
 
     private void initComponents() {
         setTitle("Qveto E-Commerce — " + (currentUser.isAdmin() ? "Admin Management" : "Customer Portal"));
-        setSize(940, 640);
-        setMinimumSize(new Dimension(840, 520));
+        setSize(960, 660);
+        setMinimumSize(new Dimension(860, 540));
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 
@@ -91,7 +104,7 @@ public class DashboardFrame extends JFrame {
         mainPanel.add(topBar, BorderLayout.NORTH);
 
         // --- Central Tabbed Navigation ---
-        JTabbedPane tabbedPane = new JTabbedPane();
+        tabbedPane = new JTabbedPane();
         tabbedPane.setFont(new Font("Segoe UI", Font.PLAIN, 13));
         tabbedPane.setBorder(new EmptyBorder(10, 15, 15, 15));
 
@@ -111,7 +124,407 @@ public class DashboardFrame extends JFrame {
     }
 
     // ==========================================
-    // CUSTOMER PROFILE SCREEN (Member 2 Focus)
+    // SHOPPING CART FRONTEND (New Upgrade)
+    // ==========================================
+
+    private JPanel createCustomerCartPanel() {
+        cartRootPanel = new JPanel(new BorderLayout());
+        cartRootPanel.setBackground(Color.WHITE);
+        renderCartContent();
+        return cartRootPanel;
+    }
+
+    private void renderCartContent() {
+        cartRootPanel.removeAll();
+
+        if (shoppingCart.isEmpty()) {
+            JPanel emptyPanel = new JPanel();
+            emptyPanel.setLayout(new BoxLayout(emptyPanel, BoxLayout.Y_AXIS));
+            emptyPanel.setBackground(Color.WHITE);
+            emptyPanel.setBorder(new EmptyBorder(60, 40, 60, 40));
+
+            JLabel emptyTitle = new JLabel("Your Shopping Cart is Empty");
+            emptyTitle.setFont(new Font("Segoe UI", Font.BOLD, 18));
+            emptyTitle.setForeground(new Color(71, 85, 105));
+            emptyTitle.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+            JLabel emptySub = new JLabel("Explore our catalog and add items you want to purchase.");
+            emptySub.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+            emptySub.setForeground(new Color(148, 163, 184));
+            emptySub.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+            JButton browseBtn = new JButton("Browse Catalog");
+            browseBtn.setFont(new Font("Segoe UI", Font.BOLD, 13));
+            browseBtn.setBackground(new Color(37, 99, 235));
+            browseBtn.setForeground(Color.WHITE);
+            browseBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
+            browseBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+            browseBtn.addActionListener(e -> tabbedPane.setSelectedIndex(0));
+
+            emptyPanel.add(emptyTitle);
+            emptyPanel.add(Box.createVerticalStrut(8));
+            emptyPanel.add(emptySub);
+            emptyPanel.add(Box.createVerticalStrut(20));
+            emptyPanel.add(browseBtn);
+
+            cartRootPanel.add(emptyPanel, BorderLayout.CENTER);
+        } else {
+            JPanel activePanel = new JPanel(new BorderLayout(15, 15));
+            activePanel.setBackground(Color.WHITE);
+            activePanel.setBorder(new EmptyBorder(15, 15, 15, 15));
+
+            // Table of cart items
+            String[] columns = {"Product Name", "Unit Price ($)", "Quantity", "Subtotal ($)"};
+            cartTableModel = new DefaultTableModel(columns, 0) {
+                @Override
+                public boolean isCellEditable(int row, int column) {
+                    return false;
+                }
+            };
+
+            for (OrderItem item : shoppingCart) {
+                cartTableModel.addRow(new Object[]{
+                        item.getProductName(),
+                        String.format("$%.2f", item.getUnitPrice()),
+                        item.getQuantity(),
+                        String.format("$%.2f", item.getSubtotal())
+                });
+            }
+
+            cartTable = new JTable(cartTableModel);
+            cartTable.setRowHeight(30);
+            cartTable.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+            cartTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 12));
+
+            DefaultTableCellRenderer centerRenderer = new DefaultTableCellRenderer();
+            centerRenderer.setHorizontalAlignment(SwingConstants.CENTER);
+            cartTable.getColumnModel().getColumn(2).setCellRenderer(centerRenderer);
+
+            DefaultTableCellRenderer rightRenderer = new DefaultTableCellRenderer();
+            rightRenderer.setHorizontalAlignment(SwingConstants.RIGHT);
+            cartTable.getColumnModel().getColumn(1).setCellRenderer(rightRenderer);
+            cartTable.getColumnModel().getColumn(3).setCellRenderer(rightRenderer);
+
+            JScrollPane scrollPane = new JScrollPane(cartTable);
+            activePanel.add(scrollPane, BorderLayout.CENTER);
+
+            // Right & Bottom Summary Bar
+            JPanel footerPanel = new JPanel(new BorderLayout());
+            footerPanel.setBackground(Color.WHITE);
+            footerPanel.setBorder(new EmptyBorder(10, 0, 0, 0));
+
+            // Quantity adjust buttons on left
+            JPanel qtyControls = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+            qtyControls.setBackground(Color.WHITE);
+
+            JButton plusBtn = new JButton("+ Increase Qty");
+            plusBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+            plusBtn.addActionListener(e -> modifyCartItemQuantity(1));
+
+            JButton minusBtn = new JButton("- Decrease Qty");
+            minusBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+            minusBtn.addActionListener(e -> modifyCartItemQuantity(-1));
+
+            JButton removeBtn = new JButton("Remove Item");
+            removeBtn.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+            removeBtn.setForeground(Color.RED);
+            removeBtn.addActionListener(e -> removeSelectedCartItem());
+
+            JButton clearBtn = new JButton("Clear All");
+            clearBtn.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+            clearBtn.addActionListener(e -> clearEntireCart());
+
+            qtyControls.add(plusBtn);
+            qtyControls.add(minusBtn);
+            qtyControls.add(removeBtn);
+            qtyControls.add(clearBtn);
+            footerPanel.add(qtyControls, BorderLayout.WEST);
+
+            // Summary and checkout on right
+            JPanel checkoutRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 15, 0));
+            checkoutRow.setBackground(Color.WHITE);
+
+            double total = calculateCartTotal();
+            cartTotalSummaryLabel = new JLabel(String.format("Cart Total: $%.2f", total));
+            cartTotalSummaryLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
+            cartTotalSummaryLabel.setForeground(new Color(15, 23, 42));
+
+            JButton checkoutBtn = new JButton("Proceed to Checkout");
+            checkoutBtn.setFont(new Font("Segoe UI", Font.BOLD, 13));
+            checkoutBtn.setBackground(new Color(16, 185, 129));
+            checkoutBtn.setForeground(Color.WHITE);
+            checkoutBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+            checkoutBtn.addActionListener(e -> showCheckoutDialog());
+
+            checkoutRow.add(cartTotalSummaryLabel);
+            checkoutRow.add(checkoutBtn);
+            footerPanel.add(checkoutRow, BorderLayout.EAST);
+
+            activePanel.add(footerPanel, BorderLayout.SOUTH);
+            cartRootPanel.add(activePanel, BorderLayout.CENTER);
+        }
+
+        cartRootPanel.revalidate();
+        cartRootPanel.repaint();
+    }
+
+    private void addProductToCart(int productId, String productName, double price) {
+        for (OrderItem item : shoppingCart) {
+            if (item.getProductId() == productId) {
+                item.setQuantity(item.getQuantity() + 1);
+                updateCartBadge();
+                renderCartContent();
+                ValidationUtil.showSuccess(this,
+                        "Increased quantity for <b>" + productName + "</b> in your cart (Total: " + item.getQuantity() + ").",
+                        "Cart Updated");
+                return;
+            }
+        }
+
+        OrderItem newItem = new OrderItem(shoppingCart.size() + 1, 0, productId, productName, 1, price);
+        shoppingCart.add(newItem);
+        updateCartBadge();
+        renderCartContent();
+
+        ValidationUtil.showSuccess(this,
+                "<b>" + productName + "</b> added to your shopping cart!<br/>Go to the <b>My Cart</b> tab to review and checkout.",
+                "Item Added");
+    }
+
+    private void modifyCartItemQuantity(int delta) {
+        int selected = cartTable.getSelectedRow();
+        if (selected < 0) {
+            ValidationUtil.showWarning(this, "Please select an item in the cart table first.", "Selection Needed");
+            return;
+        }
+
+        OrderItem item = shoppingCart.get(selected);
+        int newQty = item.getQuantity() + delta;
+        if (newQty <= 0) {
+            shoppingCart.remove(selected);
+        } else {
+            item.setQuantity(newQty);
+        }
+
+        updateCartBadge();
+        renderCartContent();
+    }
+
+    private void removeSelectedCartItem() {
+        int selected = cartTable.getSelectedRow();
+        if (selected < 0) {
+            ValidationUtil.showWarning(this, "Please select an item in the cart table to remove.", "Selection Needed");
+            return;
+        }
+
+        OrderItem item = shoppingCart.remove(selected);
+        updateCartBadge();
+        renderCartContent();
+        ValidationUtil.showSuccess(this, item.getProductName() + " removed from your cart.", "Cart Updated");
+    }
+
+    private void clearEntireCart() {
+        if (shoppingCart.isEmpty()) return;
+        if (ValidationUtil.showConfirm(this, "Are you sure you want to clear all items from your cart?", "Clear Cart")) {
+            shoppingCart.clear();
+            updateCartBadge();
+            renderCartContent();
+        }
+    }
+
+    private double calculateCartTotal() {
+        double sum = 0;
+        for (OrderItem item : shoppingCart) {
+            sum += item.getSubtotal();
+        }
+        return sum;
+    }
+
+    private int getCartItemCount() {
+        int count = 0;
+        for (OrderItem item : shoppingCart) {
+            count += item.getQuantity();
+        }
+        return count;
+    }
+
+    private void updateCartBadge() {
+        if (!currentUser.isAdmin() && tabbedPane != null) {
+            tabbedPane.setTitleAt(1, "My Cart (" + getCartItemCount() + ")");
+        }
+    }
+
+    private void showCheckoutDialog() {
+        if (shoppingCart.isEmpty()) {
+            ValidationUtil.showWarning(this, "Your cart is empty. Add items before checking out.", "Empty Cart");
+            return;
+        }
+
+        JDialog dialog = new JDialog(this, "Complete Order & Checkout", true);
+        dialog.setSize(480, 420);
+        dialog.setLocationRelativeTo(this);
+
+        JPanel panel = new JPanel(new GridBagLayout());
+        panel.setBackground(Color.WHITE);
+        panel.setBorder(new EmptyBorder(20, 25, 20, 25));
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.insets = new Insets(6, 0, 6, 0);
+        gbc.gridx = 0;
+
+        // Title
+        JLabel title = new JLabel("Checkout Order Confirmation");
+        title.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        gbc.gridy = 0;
+        panel.add(title, gbc);
+
+        // Order Total Breakdown
+        double subtotal = calculateCartTotal();
+        double tax = subtotal * 0.05;
+        double grandTotal = subtotal + tax;
+
+        JLabel totalDesc = new JLabel(String.format("<html><b>Items Total:</b> $%.2f &nbsp;|&nbsp; <b>Tax (5%%):</b> $%.2f &nbsp;|&nbsp; <b>Grand Total: <font color='#16a34a'>$%.2f</font></b></html>", subtotal, tax, grandTotal));
+        totalDesc.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        gbc.gridy = 1;
+        panel.add(totalDesc, gbc);
+
+        // Shipping Address
+        gbc.gridy = 2;
+        panel.add(new JLabel("Confirm Shipping Address:"), gbc);
+
+        JTextField addressField = new JTextField(currentUser.getAddress());
+        addressField.setPreferredSize(new Dimension(340, 32));
+        gbc.gridy = 3;
+        panel.add(addressField, gbc);
+
+        // Payment Method Options
+        gbc.gridy = 4;
+        panel.add(new JLabel("Select Payment Method:"), gbc);
+
+        JComboBox<String> paymentCombo = new JComboBox<>(new String[]{"Cash on Delivery (COD)", "UPI / Card Online (Test Mode)"});
+        gbc.gridy = 5;
+        panel.add(paymentCombo, gbc);
+
+        // Action Buttons
+        JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        btnRow.setBackground(Color.WHITE);
+
+        JButton cancelBtn = new JButton("Cancel");
+        cancelBtn.addActionListener(e -> dialog.dispose());
+
+        JButton confirmBtn = new JButton("Confirm & Place Order");
+        confirmBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        confirmBtn.setBackground(new Color(16, 185, 129));
+        confirmBtn.setForeground(Color.WHITE);
+        confirmBtn.addActionListener(e -> {
+            String address = addressField.getText().trim();
+            if (!ValidationUtil.isNotEmpty(address)) {
+                ValidationUtil.showError(dialog, "Shipping Address cannot be blank.", "Validation Error");
+                return;
+            }
+
+            currentUser.setAddress(address);
+            String selectedPayment = paymentCombo.getSelectedIndex() == 0 ? "COD" : "PREPAID";
+            String newOrderCode = "ORD-2026-" + String.format("%03d", customerOrders.size() + 1);
+
+            Order newOrder = new Order(customerOrders.size() + 1, newOrderCode, currentUser.getUserId(),
+                    grandTotal, "PENDING", selectedPayment, LocalDate.now().toString());
+
+            // Copy items to order
+            for (OrderItem ci : shoppingCart) {
+                newOrder.addItem(new OrderItem(ci.getOrderItemId(), newOrder.getOrderId(), ci.getProductId(), ci.getProductName(), ci.getQuantity(), ci.getUnitPrice()));
+            }
+
+            customerOrders.add(0, newOrder); // add to top of orders list
+            shoppingCart.clear();
+            updateCartBadge();
+            renderCartContent();
+            applyOrderFilters();
+
+            dialog.dispose();
+
+            // Switch to Order History tab to view new order
+            tabbedPane.setSelectedIndex(2);
+
+            ValidationUtil.showSuccess(this,
+                    "🎉 <b>Order Placed Successfully!</b><br/>"
+                            + "Order Reference: <b>" + newOrderCode + "</b><br/>"
+                            + "Total Amount: <b>$" + String.format("%.2f", grandTotal) + "</b> (" + selectedPayment + ")<br/>"
+                            + "You can track its status in your <b>Order History</b>.",
+                    "Order Placed");
+        });
+
+        btnRow.add(cancelBtn);
+        btnRow.add(confirmBtn);
+
+        gbc.gridy = 6;
+        gbc.insets = new Insets(18, 0, 0, 0);
+        panel.add(btnRow, gbc);
+
+        dialog.setContentPane(panel);
+        dialog.setVisible(true);
+    }
+
+    // ==========================================
+    // CUSTOMER CATALOG SCREEN
+    // ==========================================
+
+    private JPanel createCustomerCatalogPanel() {
+        JPanel panel = new JPanel(new BorderLayout(10, 10));
+        panel.setBackground(Color.WHITE);
+        panel.setBorder(new EmptyBorder(15, 15, 15, 15));
+
+        JPanel searchBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        searchBar.setBackground(Color.WHITE);
+        searchBar.add(new JLabel("Search Product:"));
+        searchBar.add(new JTextField(18));
+        searchBar.add(new JLabel("Category:"));
+        searchBar.add(new JComboBox<>(new String[]{"All Categories", "Electronics", "Clothing", "Books", "Home"}));
+        JButton filterBtn = new JButton("Search");
+        filterBtn.setBackground(new Color(37, 99, 235));
+        filterBtn.setForeground(Color.WHITE);
+        searchBar.add(filterBtn);
+        panel.add(searchBar, BorderLayout.NORTH);
+
+        String[] columns = {"ID", "Product Name", "Category", "Description", "Price ($)", "Stock"};
+        Object[][] data = {
+                {101, "Wireless Bluetooth Headphones", "Electronics", "Noise-cancelling over-ear", "59.99", 25},
+                {102, "Mechanical Gaming Keyboard", "Electronics", "RGB backlit blue switches", "79.99", 14},
+                {103, "Classic Cotton T-Shirt", "Clothing", "100% organic cotton", "19.99", 50},
+                {104, "Java Programming: OOP Essentials", "Books", "Comprehensive Java guide", "39.99", 30},
+                {105, "Stainless Steel Water Bottle", "Home", "Vacuum insulated 750ml", "14.99", 40}
+        };
+
+        JTable table = new JTable(new DefaultTableModel(data, columns));
+        table.setRowHeight(28);
+        panel.add(new JScrollPane(table), BorderLayout.CENTER);
+
+        JPanel bottomBar = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        bottomBar.setBackground(Color.WHITE);
+        JButton addToCartBtn = new JButton("Add Selected to Cart");
+        addToCartBtn.setBackground(new Color(16, 185, 129));
+        addToCartBtn.setForeground(Color.WHITE);
+        addToCartBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        addToCartBtn.addActionListener(e -> {
+            int row = table.getSelectedRow();
+            if (row >= 0) {
+                int id = (int) table.getValueAt(row, 0);
+                String item = (String) table.getValueAt(row, 1);
+                double price = Double.parseDouble((String) table.getValueAt(row, 4));
+                addProductToCart(id, item, price);
+            } else {
+                ValidationUtil.showWarning(this, "Please select a product from the table first.", "Notice");
+            }
+        });
+        bottomBar.add(addToCartBtn);
+        panel.add(bottomBar, BorderLayout.SOUTH);
+
+        return panel;
+    }
+
+    // ==========================================
+    // CUSTOMER PROFILE SCREEN
     // ==========================================
 
     private JPanel createCustomerProfilePanel() {
@@ -379,7 +792,7 @@ public class DashboardFrame extends JFrame {
     }
 
     // ==========================================
-    // ORDER HISTORY SCREEN (Member 2 Focus)
+    // ORDER HISTORY SCREEN
     // ==========================================
 
     private JPanel createCustomerOrderHistoryPanel() {
@@ -430,7 +843,6 @@ public class DashboardFrame extends JFrame {
         ordersTable.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         ordersTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 12));
 
-        // Center align status and right align totals
         DefaultTableCellRenderer centerRenderer = new DefaultTableCellRenderer();
         centerRenderer.setHorizontalAlignment(SwingConstants.CENTER);
         ordersTable.getColumnModel().getColumn(5).setCellRenderer(centerRenderer);
@@ -544,69 +956,6 @@ public class DashboardFrame extends JFrame {
                             + "Inventory stock has been restored.",
                     "Order Cancelled");
         }
-    }
-
-    // --- Customer Catalog & Cart Stubs ---
-
-    private JPanel createCustomerCatalogPanel() {
-        JPanel panel = new JPanel(new BorderLayout(10, 10));
-        panel.setBackground(Color.WHITE);
-        panel.setBorder(new EmptyBorder(15, 15, 15, 15));
-
-        JPanel searchBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-        searchBar.setBackground(Color.WHITE);
-        searchBar.add(new JLabel("Search Product:"));
-        searchBar.add(new JTextField(18));
-        searchBar.add(new JLabel("Category:"));
-        searchBar.add(new JComboBox<>(new String[]{"All Categories", "Electronics", "Clothing", "Books", "Home"}));
-        JButton filterBtn = new JButton("Search");
-        filterBtn.setBackground(new Color(37, 99, 235));
-        filterBtn.setForeground(Color.WHITE);
-        searchBar.add(filterBtn);
-        panel.add(searchBar, BorderLayout.NORTH);
-
-        String[] columns = {"ID", "Product Name", "Category", "Description", "Price ($)", "Stock"};
-        Object[][] data = {
-                {101, "Wireless Bluetooth Headphones", "Electronics", "Noise-cancelling over-ear", "59.99", 25},
-                {102, "Mechanical Gaming Keyboard", "Electronics", "RGB backlit blue switches", "79.99", 14},
-                {103, "Classic Cotton T-Shirt", "Clothing", "100% organic cotton", "19.99", 50},
-                {104, "Java Programming: OOP Essentials", "Books", "Comprehensive Java guide", "39.99", 30},
-                {105, "Stainless Steel Water Bottle", "Home", "Vacuum insulated 750ml", "14.99", 40}
-        };
-
-        JTable table = new JTable(new DefaultTableModel(data, columns));
-        table.setRowHeight(28);
-        panel.add(new JScrollPane(table), BorderLayout.CENTER);
-
-        JPanel bottomBar = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        bottomBar.setBackground(Color.WHITE);
-        JButton addToCartBtn = new JButton("Add Selected to Cart");
-        addToCartBtn.setBackground(new Color(16, 185, 129));
-        addToCartBtn.setForeground(Color.WHITE);
-        addToCartBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        addToCartBtn.addActionListener(e -> {
-            int row = table.getSelectedRow();
-            if (row >= 0) {
-                String item = (String) table.getValueAt(row, 1);
-                ValidationUtil.showSuccess(this, item + " added to your cart!", "Cart Updated");
-            } else {
-                ValidationUtil.showWarning(this, "Please select a product from the table first.", "Notice");
-            }
-        });
-        bottomBar.add(addToCartBtn);
-        panel.add(bottomBar, BorderLayout.SOUTH);
-
-        return panel;
-    }
-
-    private JPanel createCustomerCartPanel() {
-        JPanel panel = new JPanel(new BorderLayout(10, 10));
-        panel.setBackground(Color.WHITE);
-        panel.setBorder(new EmptyBorder(25, 25, 25, 25));
-
-        JLabel emptyNotice = new JLabel("<html><center><h3>Your Shopping Cart is currently empty</h3><p>Browse products and add items to place an order.</p></center></html>", SwingConstants.CENTER);
-        panel.add(emptyNotice, BorderLayout.CENTER);
-        return panel;
     }
 
     // --- Admin Screens ---
