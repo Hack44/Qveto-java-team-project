@@ -13,6 +13,7 @@ import java.awt.event.ActionEvent;
  * 
  * Developed for Member 2 tasks:
  * - Login & Registration screens (Customer & Admin)
+ * - Password visibility toggle for better UX
  * - Input validation & user-friendly error alerts
  * - Authentication flow and navigation to Dashboard
  */
@@ -42,8 +43,8 @@ public class LoginFrame extends JFrame {
 
     private void initComponents() {
         setTitle("Qveto E-Commerce & Inventory Management");
-        setSize(480, 600);
-        setMinimumSize(new Dimension(440, 560));
+        setSize(500, 620);
+        setMinimumSize(new Dimension(460, 580));
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null); // Center on screen
 
@@ -110,7 +111,7 @@ public class LoginFrame extends JFrame {
         panel.add(emailLabel, gbc);
 
         customerEmailField = new JTextField();
-        customerEmailField.setPreferredSize(new Dimension(300, 36));
+        customerEmailField.setPreferredSize(new Dimension(320, 36));
         customerEmailField.setFont(new Font("Segoe UI", Font.PLAIN, 13));
         gbc.gridy = 1;
         panel.add(customerEmailField, gbc);
@@ -122,17 +123,28 @@ public class LoginFrame extends JFrame {
         panel.add(passLabel, gbc);
 
         customerPasswordField = new JPasswordField();
-        customerPasswordField.setPreferredSize(new Dimension(300, 36));
+        customerPasswordField.setPreferredSize(new Dimension(320, 36));
         customerPasswordField.setFont(new Font("Segoe UI", Font.PLAIN, 13));
         gbc.gridy = 3;
         panel.add(customerPasswordField, gbc);
 
-        // Remember Me Checkbox
-        customerRememberCheckBox = new JCheckBox("Remember me on this device");
+        // Options Row: Remember Me & Show Password
+        JPanel optionsRow = new JPanel(new BorderLayout());
+        optionsRow.setBackground(Color.WHITE);
+
+        customerRememberCheckBox = new JCheckBox("Remember me");
         customerRememberCheckBox.setBackground(Color.WHITE);
         customerRememberCheckBox.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        optionsRow.add(customerRememberCheckBox, BorderLayout.WEST);
+
+        JCheckBox showPassCheck = new JCheckBox("Show Password");
+        showPassCheck.setBackground(Color.WHITE);
+        showPassCheck.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        showPassCheck.addActionListener(e -> customerPasswordField.setEchoChar(showPassCheck.isSelected() ? (char) 0 : '\u2022'));
+        optionsRow.add(showPassCheck, BorderLayout.EAST);
+
         gbc.gridy = 4;
-        panel.add(customerRememberCheckBox, gbc);
+        panel.add(optionsRow, gbc);
 
         // Login Button
         JButton loginBtn = createPrimaryButton("Login as Customer", new Color(37, 99, 235));
@@ -176,7 +188,7 @@ public class LoginFrame extends JFrame {
         panel.add(userLabel, gbc);
 
         adminUsernameField = new JTextField();
-        adminUsernameField.setPreferredSize(new Dimension(300, 36));
+        adminUsernameField.setPreferredSize(new Dimension(320, 36));
         adminUsernameField.setFont(new Font("Segoe UI", Font.PLAIN, 13));
         gbc.gridy = 2;
         panel.add(adminUsernameField, gbc);
@@ -187,15 +199,24 @@ public class LoginFrame extends JFrame {
         panel.add(passLabel, gbc);
 
         adminPasswordField = new JPasswordField();
-        adminPasswordField.setPreferredSize(new Dimension(300, 36));
+        adminPasswordField.setPreferredSize(new Dimension(320, 36));
         adminPasswordField.setFont(new Font("Segoe UI", Font.PLAIN, 13));
         gbc.gridy = 4;
         panel.add(adminPasswordField, gbc);
 
+        // Show Password Option for Admin
+        JCheckBox showAdminPassCheck = new JCheckBox("Show Password");
+        showAdminPassCheck.setBackground(Color.WHITE);
+        showAdminPassCheck.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        showAdminPassCheck.addActionListener(e -> adminPasswordField.setEchoChar(showAdminPassCheck.isSelected() ? (char) 0 : '\u2022'));
+        gbc.gridy = 5;
+        gbc.insets = new Insets(2, 0, 8, 0);
+        panel.add(showAdminPassCheck, gbc);
+
         JButton adminLoginBtn = createPrimaryButton("Login as Admin", new Color(17, 24, 39));
         adminLoginBtn.addActionListener(this::handleAdminLogin);
-        gbc.gridy = 5;
-        gbc.insets = new Insets(18, 0, 8, 0);
+        gbc.gridy = 6;
+        gbc.insets = new Insets(12, 0, 8, 0);
         panel.add(adminLoginBtn, gbc);
 
         return panel;
@@ -221,7 +242,7 @@ public class LoginFrame extends JFrame {
         panel.add(nameLabel, gbc);
 
         regNameField = new JTextField();
-        regNameField.setPreferredSize(new Dimension(300, 32));
+        regNameField.setPreferredSize(new Dimension(320, 32));
         gbc.gridy = 1;
         panel.add(regNameField, gbc);
 
@@ -232,7 +253,7 @@ public class LoginFrame extends JFrame {
         panel.add(emailLabel, gbc);
 
         regEmailField = new JTextField();
-        regEmailField.setPreferredSize(new Dimension(300, 32));
+        regEmailField.setPreferredSize(new Dimension(320, 32));
         gbc.gridy = 3;
         panel.add(regEmailField, gbc);
 
@@ -243,7 +264,7 @@ public class LoginFrame extends JFrame {
         panel.add(phoneLabel, gbc);
 
         regPhoneField = new JTextField();
-        regPhoneField.setPreferredSize(new Dimension(300, 32));
+        regPhoneField.setPreferredSize(new Dimension(320, 32));
         gbc.gridy = 5;
         panel.add(regPhoneField, gbc);
 
@@ -254,7 +275,7 @@ public class LoginFrame extends JFrame {
         panel.add(passLabel, gbc);
 
         regPasswordField = new JPasswordField();
-        regPasswordField.setPreferredSize(new Dimension(300, 32));
+        regPasswordField.setPreferredSize(new Dimension(320, 32));
         gbc.gridy = 7;
         panel.add(regPasswordField, gbc);
 
@@ -265,21 +286,33 @@ public class LoginFrame extends JFrame {
         panel.add(confirmLabel, gbc);
 
         regConfirmPasswordField = new JPasswordField();
-        regConfirmPasswordField.setPreferredSize(new Dimension(300, 32));
+        regConfirmPasswordField.setPreferredSize(new Dimension(320, 32));
         gbc.gridy = 9;
         panel.add(regConfirmPasswordField, gbc);
+
+        // Show Passwords Checkbox
+        JCheckBox showRegPassCheck = new JCheckBox("Show Passwords");
+        showRegPassCheck.setBackground(Color.WHITE);
+        showRegPassCheck.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        showRegPassCheck.addActionListener(e -> {
+            char echo = showRegPassCheck.isSelected() ? (char) 0 : '\u2022';
+            regPasswordField.setEchoChar(echo);
+            regConfirmPasswordField.setEchoChar(echo);
+        });
+        gbc.gridy = 10;
+        panel.add(showRegPassCheck, gbc);
 
         // Register Button
         JButton registerBtn = createPrimaryButton("Create Customer Account", new Color(16, 185, 129));
         registerBtn.addActionListener(this::handleRegistration);
-        gbc.gridy = 10;
-        gbc.insets = new Insets(12, 0, 4, 0);
+        gbc.gridy = 11;
+        gbc.insets = new Insets(10, 0, 4, 0);
         panel.add(registerBtn, gbc);
 
         // Back to login
         JButton backBtn = createLinkButton("Already have an account? Back to Login");
         backBtn.addActionListener(e -> tabbedPane.setSelectedIndex(0));
-        gbc.gridy = 11;
+        gbc.gridy = 12;
         gbc.insets = new Insets(2, 0, 0, 0);
         panel.add(backBtn, gbc);
 
@@ -395,7 +428,7 @@ public class LoginFrame extends JFrame {
 
     private JButton createPrimaryButton(String text, Color background) {
         JButton button = new JButton(text);
-        button.setPreferredSize(new Dimension(300, 38));
+        button.setPreferredSize(new Dimension(320, 38));
         button.setBackground(background);
         button.setForeground(Color.WHITE);
         button.setFont(new Font("Segoe UI", Font.BOLD, 13));
