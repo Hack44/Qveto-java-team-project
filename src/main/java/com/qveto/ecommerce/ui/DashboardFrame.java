@@ -2,6 +2,7 @@ package com.qveto.ecommerce.ui;
 
 import com.qveto.ecommerce.model.Order;
 import com.qveto.ecommerce.model.OrderItem;
+import com.qveto.ecommerce.model.Product;
 import com.qveto.ecommerce.model.User;
 import com.qveto.ecommerce.util.ValidationUtil;
 
@@ -18,19 +19,32 @@ import java.util.List;
  * Main Application Dashboard & Navigation Shell.
  * 
  * Developed for Member 2 tasks:
+ * - Product Catalog Discovery: Search, category filtering, and product details modal
  * - Interactive Shopping Cart with live total calculation & quantity updates
  * - Checkout workflow connecting Cart to Order History
  * - Customer Profile management (Edit contact/address, change password)
  * - Order History screen with status filtering, invoice modal, and order cancellation
+ * - Admin Product management (Add, delete, and view catalog inventory)
  */
 public class DashboardFrame extends JFrame {
 
     private final User currentUser;
+    private final List<Product> catalogProducts;
     private final List<Order> customerOrders;
     private final List<OrderItem> shoppingCart;
 
     // Central navigation tabs
     private JTabbedPane tabbedPane;
+
+    // Customer Catalog UI components
+    private DefaultTableModel customerCatalogTableModel;
+    private JTable customerCatalogTable;
+    private JTextField customerSearchField;
+    private JComboBox<String> customerCategoryCombo;
+
+    // Admin Catalog UI components
+    private DefaultTableModel adminCatalogTableModel;
+    private JTable adminCatalogTable;
 
     // Cart UI components
     private JPanel cartRootPanel;
@@ -52,6 +66,7 @@ public class DashboardFrame extends JFrame {
 
     public DashboardFrame(User user) {
         this.currentUser = user;
+        this.catalogProducts = initializeSampleProducts();
         this.customerOrders = initializeSampleOrders();
         this.shoppingCart = new ArrayList<>();
         initComponents();
@@ -124,7 +139,170 @@ public class DashboardFrame extends JFrame {
     }
 
     // ==========================================
-    // SHOPPING CART FRONTEND (New Upgrade)
+    // CUSTOMER CATALOG SCREEN (Product Discovery)
+    // ==========================================
+
+    private JPanel createCustomerCatalogPanel() {
+        JPanel panel = new JPanel(new BorderLayout(10, 10));
+        panel.setBackground(Color.WHITE);
+        panel.setBorder(new EmptyBorder(15, 15, 15, 15));
+
+        // Filter / Search Toolbar
+        JPanel searchBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        searchBar.setBackground(Color.WHITE);
+
+        searchBar.add(new JLabel("Search:"));
+        customerSearchField = new JTextField(16);
+        customerSearchField.addActionListener(e -> applyCatalogFilters());
+        searchBar.add(customerSearchField);
+
+        searchBar.add(new JLabel("Category:"));
+        customerCategoryCombo = new JComboBox<>(new String[]{"All Categories", "Electronics", "Clothing", "Books", "Home"});
+        customerCategoryCombo.addActionListener(e -> applyCatalogFilters());
+        searchBar.add(customerCategoryCombo);
+
+        JButton filterBtn = new JButton("Filter");
+        filterBtn.setBackground(new Color(37, 99, 235));
+        filterBtn.setForeground(Color.WHITE);
+        filterBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        filterBtn.addActionListener(e -> applyCatalogFilters());
+        searchBar.add(filterBtn);
+
+        JButton resetBtn = new JButton("Reset");
+        resetBtn.addActionListener(e -> {
+            customerSearchField.setText("");
+            customerCategoryCombo.setSelectedIndex(0);
+            applyCatalogFilters();
+        });
+        searchBar.add(resetBtn);
+
+        panel.add(searchBar, BorderLayout.NORTH);
+
+        // Catalog Table
+        String[] columns = {"ID", "Product Name", "Category", "Unit Price ($)", "Stock", "Availability"};
+        customerCatalogTableModel = new DefaultTableModel(columns, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+        };
+
+        customerCatalogTable = new JTable(customerCatalogTableModel);
+        customerCatalogTable.setRowHeight(28);
+        customerCatalogTable.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        customerCatalogTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 12));
+
+        DefaultTableCellRenderer centerRenderer = new DefaultTableCellRenderer();
+        centerRenderer.setHorizontalAlignment(SwingConstants.CENTER);
+        customerCatalogTable.getColumnModel().getColumn(0).setCellRenderer(centerRenderer);
+        customerCatalogTable.getColumnModel().getColumn(4).setCellRenderer(centerRenderer);
+        customerCatalogTable.getColumnModel().getColumn(5).setCellRenderer(centerRenderer);
+
+        DefaultTableCellRenderer rightRenderer = new DefaultTableCellRenderer();
+        rightRenderer.setHorizontalAlignment(SwingConstants.RIGHT);
+        customerCatalogTable.getColumnModel().getColumn(3).setCellRenderer(rightRenderer);
+
+        refreshCustomerCatalogTable(catalogProducts);
+
+        JScrollPane scrollPane = new JScrollPane(customerCatalogTable);
+        panel.add(scrollPane, BorderLayout.CENTER);
+
+        // Bottom Action Bar
+        JPanel bottomBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 5));
+        bottomBar.setBackground(Color.WHITE);
+
+        JButton viewDetailsBtn = new JButton("View Product Details");
+        viewDetailsBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        viewDetailsBtn.setBackground(new Color(15, 23, 42));
+        viewDetailsBtn.setForeground(Color.WHITE);
+        viewDetailsBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        viewDetailsBtn.addActionListener(e -> handleViewProductDetails());
+        bottomBar.add(viewDetailsBtn);
+
+        JButton addToCartBtn = new JButton("Add Selected to Cart");
+        addToCartBtn.setBackground(new Color(16, 185, 129));
+        addToCartBtn.setForeground(Color.WHITE);
+        addToCartBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        addToCartBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        addToCartBtn.addActionListener(e -> handleAddToCartFromCatalog());
+        bottomBar.add(addToCartBtn);
+
+        panel.add(bottomBar, BorderLayout.SOUTH);
+        return panel;
+    }
+
+    private void refreshCustomerCatalogTable(List<Product> products) {
+        customerCatalogTableModel.setRowCount(0);
+        for (Product p : products) {
+            customerCatalogTableModel.addRow(new Object[]{
+                    p.getProductId(),
+                    p.getProductName(),
+                    p.getCategory(),
+                    String.format("$%.2f", p.getPrice()),
+                    p.getStockQuantity(),
+                    p.getStockStatus()
+            });
+        }
+    }
+
+    private void applyCatalogFilters() {
+        String keyword = customerSearchField.getText().trim().toLowerCase();
+        String selectedCat = (String) customerCategoryCombo.getSelectedItem();
+
+        List<Product> filtered = new ArrayList<>();
+        for (Product p : catalogProducts) {
+            boolean matchesCat = "All Categories".equals(selectedCat) || p.getCategory().equalsIgnoreCase(selectedCat);
+            boolean matchesKeyword = keyword.isEmpty()
+                    || p.getProductName().toLowerCase().contains(keyword)
+                    || p.getDescription().toLowerCase().contains(keyword);
+
+            if (matchesCat && matchesKeyword) {
+                filtered.add(p);
+            }
+        }
+        refreshCustomerCatalogTable(filtered);
+    }
+
+    private Product getSelectedCustomerProduct() {
+        int row = customerCatalogTable.getSelectedRow();
+        if (row < 0) {
+            ValidationUtil.showWarning(this, "Please select a product from the catalog table first.", "Notice");
+            return null;
+        }
+
+        int productId = (int) customerCatalogTableModel.getValueAt(row, 0);
+        for (Product p : catalogProducts) {
+            if (p.getProductId() == productId) {
+                return p;
+            }
+        }
+        return null;
+    }
+
+    private void handleViewProductDetails() {
+        Product selected = getSelectedCustomerProduct();
+        if (selected == null) return;
+
+        ProductDetailsDialog dialog = new ProductDetailsDialog(this, selected, true, p -> {
+            addProductToCart(p.getProductId(), p.getProductName(), p.getPrice());
+        });
+        dialog.setVisible(true);
+    }
+
+    private void handleAddToCartFromCatalog() {
+        Product selected = getSelectedCustomerProduct();
+        if (selected == null) return;
+
+        if (selected.isOutOfStock()) {
+            ValidationUtil.showError(this, "This product is currently out of stock.", "Out of Stock");
+            return;
+        }
+
+        addProductToCart(selected.getProductId(), selected.getProductName(), selected.getPrice());
+    }
+
+    // ==========================================
+    // SHOPPING CART FRONTEND
     // ==========================================
 
     private JPanel createCustomerCartPanel() {
@@ -464,63 +642,6 @@ public class DashboardFrame extends JFrame {
 
         dialog.setContentPane(panel);
         dialog.setVisible(true);
-    }
-
-    // ==========================================
-    // CUSTOMER CATALOG SCREEN
-    // ==========================================
-
-    private JPanel createCustomerCatalogPanel() {
-        JPanel panel = new JPanel(new BorderLayout(10, 10));
-        panel.setBackground(Color.WHITE);
-        panel.setBorder(new EmptyBorder(15, 15, 15, 15));
-
-        JPanel searchBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-        searchBar.setBackground(Color.WHITE);
-        searchBar.add(new JLabel("Search Product:"));
-        searchBar.add(new JTextField(18));
-        searchBar.add(new JLabel("Category:"));
-        searchBar.add(new JComboBox<>(new String[]{"All Categories", "Electronics", "Clothing", "Books", "Home"}));
-        JButton filterBtn = new JButton("Search");
-        filterBtn.setBackground(new Color(37, 99, 235));
-        filterBtn.setForeground(Color.WHITE);
-        searchBar.add(filterBtn);
-        panel.add(searchBar, BorderLayout.NORTH);
-
-        String[] columns = {"ID", "Product Name", "Category", "Description", "Price ($)", "Stock"};
-        Object[][] data = {
-                {101, "Wireless Bluetooth Headphones", "Electronics", "Noise-cancelling over-ear", "59.99", 25},
-                {102, "Mechanical Gaming Keyboard", "Electronics", "RGB backlit blue switches", "79.99", 14},
-                {103, "Classic Cotton T-Shirt", "Clothing", "100% organic cotton", "19.99", 50},
-                {104, "Java Programming: OOP Essentials", "Books", "Comprehensive Java guide", "39.99", 30},
-                {105, "Stainless Steel Water Bottle", "Home", "Vacuum insulated 750ml", "14.99", 40}
-        };
-
-        JTable table = new JTable(new DefaultTableModel(data, columns));
-        table.setRowHeight(28);
-        panel.add(new JScrollPane(table), BorderLayout.CENTER);
-
-        JPanel bottomBar = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        bottomBar.setBackground(Color.WHITE);
-        JButton addToCartBtn = new JButton("Add Selected to Cart");
-        addToCartBtn.setBackground(new Color(16, 185, 129));
-        addToCartBtn.setForeground(Color.WHITE);
-        addToCartBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        addToCartBtn.addActionListener(e -> {
-            int row = table.getSelectedRow();
-            if (row >= 0) {
-                int id = (int) table.getValueAt(row, 0);
-                String item = (String) table.getValueAt(row, 1);
-                double price = Double.parseDouble((String) table.getValueAt(row, 4));
-                addProductToCart(id, item, price);
-            } else {
-                ValidationUtil.showWarning(this, "Please select a product from the table first.", "Notice");
-            }
-        });
-        bottomBar.add(addToCartBtn);
-        panel.add(bottomBar, BorderLayout.SOUTH);
-
-        return panel;
     }
 
     // ==========================================
@@ -958,7 +1079,9 @@ public class DashboardFrame extends JFrame {
         }
     }
 
-    // --- Admin Screens ---
+    // ==========================================
+    // ADMIN SCREENS
+    // ==========================================
 
     private JPanel createAdminCatalogPanel() {
         JPanel panel = new JPanel(new BorderLayout(10, 10));
@@ -967,28 +1090,204 @@ public class DashboardFrame extends JFrame {
 
         JPanel toolBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
         toolBar.setBackground(Color.WHITE);
+
         JButton addBtn = new JButton("+ Add New Product");
         addBtn.setBackground(new Color(16, 185, 129));
         addBtn.setForeground(Color.WHITE);
+        addBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        addBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        addBtn.addActionListener(e -> showAddProductDialog());
         toolBar.add(addBtn);
-        toolBar.add(new JButton("Edit Product"));
+
+        JButton viewBtn = new JButton("View Details");
+        viewBtn.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        viewBtn.addActionListener(e -> handleAdminViewProductDetails());
+        toolBar.add(viewBtn);
+
         JButton deleteBtn = new JButton("Delete Product");
         deleteBtn.setForeground(Color.RED);
+        deleteBtn.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        deleteBtn.addActionListener(e -> handleAdminDeleteProduct());
         toolBar.add(deleteBtn);
+
         panel.add(toolBar, BorderLayout.NORTH);
 
         String[] columns = {"Product ID", "Name", "Category", "Unit Price ($)", "Stock Qty", "Status"};
-        Object[][] data = {
-                {101, "Wireless Bluetooth Headphones", "Electronics", "59.99", 25, "In Stock"},
-                {102, "Mechanical Gaming Keyboard", "Electronics", "79.99", 14, "In Stock"},
-                {103, "Classic Cotton T-Shirt", "Clothing", "19.99", 5, "Low Stock"},
-                {104, "Java Programming: OOP Essentials", "Books", "39.99", 30, "In Stock"}
+        adminCatalogTableModel = new DefaultTableModel(columns, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
         };
 
-        JTable table = new JTable(new DefaultTableModel(data, columns));
-        table.setRowHeight(28);
-        panel.add(new JScrollPane(table), BorderLayout.CENTER);
+        adminCatalogTable = new JTable(adminCatalogTableModel);
+        adminCatalogTable.setRowHeight(28);
+        adminCatalogTable.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        adminCatalogTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 12));
+
+        refreshAdminCatalogTable();
+
+        panel.add(new JScrollPane(adminCatalogTable), BorderLayout.CENTER);
         return panel;
+    }
+
+    private void refreshAdminCatalogTable() {
+        if (adminCatalogTableModel == null) return;
+        adminCatalogTableModel.setRowCount(0);
+        for (Product p : catalogProducts) {
+            adminCatalogTableModel.addRow(new Object[]{
+                    p.getProductId(),
+                    p.getProductName(),
+                    p.getCategory(),
+                    String.format("$%.2f", p.getPrice()),
+                    p.getStockQuantity(),
+                    p.getStockStatus()
+            });
+        }
+    }
+
+    private void showAddProductDialog() {
+        JDialog dialog = new JDialog(this, "Add New Catalog Product", true);
+        dialog.setSize(440, 400);
+        dialog.setLocationRelativeTo(this);
+
+        JPanel panel = new JPanel(new GridBagLayout());
+        panel.setBackground(Color.WHITE);
+        panel.setBorder(new EmptyBorder(16, 20, 16, 20));
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.insets = new Insets(6, 0, 6, 0);
+        gbc.gridx = 0;
+
+        panel.add(new JLabel("Product Name:"), gbc);
+        JTextField nameField = new JTextField();
+        gbc.gridy = 1;
+        panel.add(nameField, gbc);
+
+        gbc.gridy = 2;
+        panel.add(new JLabel("Category:"), gbc);
+        JComboBox<String> categoryCombo = new JComboBox<>(new String[]{"Electronics", "Clothing", "Books", "Home", "Sports", "Other"});
+        gbc.gridy = 3;
+        panel.add(categoryCombo, gbc);
+
+        gbc.gridy = 4;
+        panel.add(new JLabel("Description:"), gbc);
+        JTextField descField = new JTextField();
+        gbc.gridy = 5;
+        panel.add(descField, gbc);
+
+        gbc.gridy = 6;
+        panel.add(new JLabel("Unit Price ($):"), gbc);
+        JTextField priceField = new JTextField();
+        gbc.gridy = 7;
+        panel.add(priceField, gbc);
+
+        gbc.gridy = 8;
+        panel.add(new JLabel("Initial Stock Quantity:"), gbc);
+        JTextField stockField = new JTextField();
+        gbc.gridy = 9;
+        panel.add(stockField, gbc);
+
+        JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        btnRow.setBackground(Color.WHITE);
+
+        JButton cancelBtn = new JButton("Cancel");
+        cancelBtn.addActionListener(e -> dialog.dispose());
+
+        JButton saveBtn = new JButton("Add Product");
+        saveBtn.setBackground(new Color(16, 185, 129));
+        saveBtn.setForeground(Color.WHITE);
+        saveBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        saveBtn.addActionListener(e -> {
+            String name = nameField.getText().trim();
+            String desc = descField.getText().trim();
+            String priceStr = priceField.getText().trim();
+            String stockStr = stockField.getText().trim();
+
+            if (!ValidationUtil.isNotEmpty(name)) {
+                ValidationUtil.showError(dialog, "Product Name cannot be blank.", "Validation Error");
+                return;
+            }
+
+            double price;
+            try {
+                price = Double.parseDouble(priceStr);
+                if (price < 0) throw new NumberFormatException();
+            } catch (NumberFormatException ex) {
+                ValidationUtil.showError(dialog, "Please enter a valid non-negative price.", "Validation Error");
+                return;
+            }
+
+            int stock;
+            try {
+                stock = Integer.parseInt(stockStr);
+                if (stock < 0) throw new NumberFormatException();
+            } catch (NumberFormatException ex) {
+                ValidationUtil.showError(dialog, "Please enter a valid non-negative stock quantity.", "Validation Error");
+                return;
+            }
+
+            int newId = 100 + catalogProducts.size() + 1;
+            String category = (String) categoryCombo.getSelectedItem();
+            Product newProduct = new Product(newId, name, category, desc, price, stock);
+
+            catalogProducts.add(newProduct);
+            refreshAdminCatalogTable();
+            if (customerCatalogTableModel != null) {
+                applyCatalogFilters();
+            }
+
+            dialog.dispose();
+            ValidationUtil.showSuccess(this, "Product <b>" + name + "</b> added to catalog successfully!", "Product Added");
+        });
+
+        btnRow.add(cancelBtn);
+        btnRow.add(saveBtn);
+
+        gbc.gridy = 10;
+        gbc.insets = new Insets(16, 0, 0, 0);
+        panel.add(btnRow, gbc);
+
+        dialog.setContentPane(panel);
+        dialog.setVisible(true);
+    }
+
+    private void handleAdminViewProductDetails() {
+        int row = adminCatalogTable.getSelectedRow();
+        if (row < 0) {
+            ValidationUtil.showWarning(this, "Please select a product from the table first.", "Notice");
+            return;
+        }
+
+        int productId = (int) adminCatalogTableModel.getValueAt(row, 0);
+        for (Product p : catalogProducts) {
+            if (p.getProductId() == productId) {
+                ProductDetailsDialog dialog = new ProductDetailsDialog(this, p, false, null);
+                dialog.setVisible(true);
+                return;
+            }
+        }
+    }
+
+    private void handleAdminDeleteProduct() {
+        int row = adminCatalogTable.getSelectedRow();
+        if (row < 0) {
+            ValidationUtil.showWarning(this, "Please select a product to delete.", "Notice");
+            return;
+        }
+
+        int productId = (int) adminCatalogTableModel.getValueAt(row, 0);
+        String name = (String) adminCatalogTableModel.getValueAt(row, 1);
+
+        if (ValidationUtil.showConfirm(this, "Are you sure you want to delete product <b>" + name + "</b> (ID: #" + productId + ")?", "Confirm Delete")) {
+            catalogProducts.removeIf(p -> p.getProductId() == productId);
+            refreshAdminCatalogTable();
+            if (customerCatalogTableModel != null) {
+                applyCatalogFilters();
+            }
+            ValidationUtil.showSuccess(this, "Product <b>" + name + "</b> has been removed from catalog.", "Product Deleted");
+        }
     }
 
     private JPanel createAdminOrdersPanel() {
@@ -1016,8 +1315,10 @@ public class DashboardFrame extends JFrame {
 
         panel.add(createKpiCard("Total Orders", "142", new Color(37, 99, 235)));
         panel.add(createKpiCard("Total Revenue", "$9,450.00", new Color(16, 185, 129)));
-        panel.add(createKpiCard("Active Products", "48", new Color(139, 92, 246)));
-        panel.add(createKpiCard("Low Stock Alerts", "3 Products", new Color(239, 68, 68)));
+        panel.add(createKpiCard("Active Products", String.valueOf(catalogProducts.size()), new Color(139, 92, 246)));
+
+        long lowStockCount = catalogProducts.stream().filter(Product::isLowStock).count();
+        panel.add(createKpiCard("Low Stock Alerts", lowStockCount + " Products", new Color(239, 68, 68)));
         return panel;
     }
 
@@ -1050,6 +1351,18 @@ public class DashboardFrame extends JFrame {
                 login.setVisible(true);
             });
         }
+    }
+
+    // --- Helper to build initial sample products ---
+    private List<Product> initializeSampleProducts() {
+        List<Product> products = new ArrayList<>();
+        products.add(new Product(101, "Wireless Bluetooth Headphones", "Electronics", "Noise-cancelling over-ear wireless headphones with deep bass", 59.99, 25));
+        products.add(new Product(102, "Mechanical Gaming Keyboard", "Electronics", "RGB backlit blue switches with mechanical tactile feedback", 79.99, 14));
+        products.add(new Product(103, "Classic Cotton T-Shirt", "Clothing", "100% organic combed cotton everyday unisex wear", 19.99, 5));
+        products.add(new Product(104, "Java Programming: OOP Essentials", "Books", "Comprehensive guide to OOP, Collections, and Design Patterns in Java", 39.99, 30));
+        products.add(new Product(105, "Stainless Steel Water Bottle", "Home", "Vacuum insulated 750ml double-walled thermal flask", 14.99, 40));
+        products.add(new Product(106, "USB-C Fast Charging Hub", "Electronics", "6-in-1 multi-port adapter with 4K HDMI and 65W Power Delivery", 29.99, 18));
+        return products;
     }
 
     // --- Helper to build initial sample orders ---

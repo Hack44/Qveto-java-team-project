@@ -15,10 +15,12 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
   * Customer & Admin Login workflows with input validation
   * Customer Registration with form validation
   * Application Dashboard Shell & Navigation (`DashboardFrame`)
+  * Product Discovery: Live keyword search, category filtering, and Product Details Modal (`ProductDetailsDialog`)
   * Interactive Shopping Cart with dynamic badge, quantity controls, and checkout confirmation
   * Customer Profile Management (View, Edit Contact Info, Change Password Dialogs)
   * Customer Order History Screen with Status Filtering & Order Cancellation
   * Order Details & Invoice Modal (`OrderDetailsDialog`)
+  * Admin Product Management (Add new product with validation, view details, delete product)
   * Centralized Form Validation Utility (`ValidationUtil`)
 * **Member 3:** Catalog, Cart & Order Placement Services
 * **Member 4:** Inventory Consistency, Invoices & Sales Reporting
@@ -63,7 +65,7 @@ java -cp bin com.qveto.ecommerce.Main
 
 | Role | Username / Email | Password | Features Accessible |
 | :--- | :--- | :--- | :--- |
-| **Customer** | `customer@qveto.com` | `pass123` | Product catalog, interactive cart, checkout, order history, cancel orders, edit profile, change password |
-| **Admin** | `admin` | `admin123` | Inventory catalog management, customer orders management, sales KPI overview |
+| **Customer** | `customer@qveto.com` | `pass123` | Product catalog with live search/filter, product details modal, cart, checkout, order history, cancel orders, edit profile, change password |
+| **Admin** | `admin` | `admin123` | Inventory catalog management (add/delete products), customer orders view, sales KPI overview |
 
 *(You can also use the **Register** tab to create a new customer account with full input validation).*
