@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS users (
     email VARCHAR(150) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
     role ENUM('ADMIN', 'CUSTOMER') NOT NULL DEFAULT 'CUSTOMER',
+    phone VARCHAR(20) DEFAULT NULL,
+    address VARCHAR(255) DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -55,6 +57,7 @@ CREATE TABLE IF NOT EXISTS orders (
         'DELIVERED', 'CANCELLED'
     ) NOT NULL DEFAULT 'PENDING',
     payment_method VARCHAR(30) NOT NULL DEFAULT 'COD',
+    shipping_address VARCHAR(255) DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(user_id),
     CHECK (total_amount >= 0)

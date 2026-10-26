@@ -14,6 +14,7 @@ public class Order {
     private double totalAmount;
     private String orderStatus; // PENDING, CONFIRMED, SHIPPED, DELIVERED, CANCELLED
     private String paymentMethod; // COD, PREPAID
+    private String shippingAddress;
     private String orderDate;
     private List<OrderItem> items;
 
@@ -88,6 +89,13 @@ public class Order {
         this.orderDate = orderDate;
     }
 
+    public String getShippingAddress() {
+        return shippingAddress;
+    }
+
+    public void setShippingAddress(String shippingAddress) {
+        this.shippingAddress = shippingAddress;
+    }
     public List<OrderItem> getItems() {
         return items;
     }
