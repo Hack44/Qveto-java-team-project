@@ -21,10 +21,11 @@ import java.util.List;
  * Developed for Member 2 tasks:
  * - Product Catalog Discovery: Search, category filtering, and product details modal
  * - Interactive Shopping Cart with live total calculation & quantity updates
- * - Checkout workflow connecting Cart to Order History
+ * - Checkout workflow connecting Cart to Order History with shipping address
  * - Customer Profile management (Edit contact/address, change password)
  * - Order History screen with status filtering, invoice modal, and order cancellation
  * - Admin Product management (Add, delete, and view catalog inventory)
+ * - Admin Order Management (View all orders, inspect invoices, and update order statuses)
  */
 public class DashboardFrame extends JFrame {
 
@@ -45,6 +46,11 @@ public class DashboardFrame extends JFrame {
     // Admin Catalog UI components
     private DefaultTableModel adminCatalogTableModel;
     private JTable adminCatalogTable;
+
+    // Admin Orders UI components
+    private DefaultTableModel adminOrdersTableModel;
+    private JTable adminOrdersTable;
+    private JComboBox<String> adminOrderStatusFilterCombo;
 
     // Cart UI components
     private JPanel cartRootPanel;
@@ -238,7 +244,7 @@ public class DashboardFrame extends JFrame {
                     p.getProductId(),
                     p.getProductName(),
                     p.getCategory(),
-                    String.format("$%.2f", p.getPrice()),
+                    String.format("$%.2f", p.getPriceAsDouble()),
                     p.getStockQuantity(),
                     p.getStockStatus()
             });
@@ -284,7 +290,7 @@ public class DashboardFrame extends JFrame {
         if (selected == null) return;
 
         ProductDetailsDialog dialog = new ProductDetailsDialog(this, selected, true, p -> {
-            addProductToCart(p.getProductId(), p.getProductName(), p.getPrice());
+            addProductToCart(p.getProductId(), p.getProductName(), p.getPriceAsDouble());
         });
         dialog.setVisible(true);
     }
@@ -298,7 +304,7 @@ public class DashboardFrame extends JFrame {
             return;
         }
 
-        addProductToCart(selected.getProductId(), selected.getProductName(), selected.getPrice());
+        addProductToCart(selected.getProductId(), selected.getProductName(), selected.getPriceAsDouble());
     }
 
     // ==========================================
@@ -607,7 +613,7 @@ public class DashboardFrame extends JFrame {
             String newOrderCode = "ORD-2026-" + String.format("%03d", customerOrders.size() + 1);
 
             Order newOrder = new Order(customerOrders.size() + 1, newOrderCode, currentUser.getUserId(),
-                    grandTotal, "PENDING", selectedPayment, LocalDate.now().toString());
+                    grandTotal, "PENDING", selectedPayment, address, LocalDate.now().toString());
 
             // Copy items to order
             for (OrderItem ci : shoppingCart) {
@@ -619,6 +625,7 @@ public class DashboardFrame extends JFrame {
             updateCartBadge();
             renderCartContent();
             applyOrderFilters();
+            refreshAdminOrdersTable();
 
             dialog.dispose();
 
@@ -913,7 +920,7 @@ public class DashboardFrame extends JFrame {
     }
 
     // ==========================================
-    // ORDER HISTORY SCREEN
+    // ORDER HISTORY SCREEN (Customer)
     // ==========================================
 
     private JPanel createCustomerOrderHistoryPanel() {
@@ -1048,7 +1055,8 @@ public class DashboardFrame extends JFrame {
         Order selected = getSelectedOrder();
         if (selected == null) return;
 
-        OrderDetailsDialog dialog = new OrderDetailsDialog(this, selected, currentUser.getAddress());
+        String addr = selected.getShippingAddress() != null ? selected.getShippingAddress() : currentUser.getAddress();
+        OrderDetailsDialog dialog = new OrderDetailsDialog(this, selected, addr);
         dialog.setVisible(true);
     }
 
@@ -1072,6 +1080,7 @@ public class DashboardFrame extends JFrame {
         if (confirm) {
             selected.setOrderStatus("CANCELLED");
             applyOrderFilters();
+            refreshAdminOrdersTable();
             ValidationUtil.showSuccess(this,
                     "Order <b>" + selected.getOrderNumber() + "</b> has been successfully cancelled.<br/>"
                             + "Inventory stock has been restored.",
@@ -1139,7 +1148,7 @@ public class DashboardFrame extends JFrame {
                     p.getProductId(),
                     p.getProductName(),
                     p.getCategory(),
-                    String.format("$%.2f", p.getPrice()),
+                    String.format("$%.2f", p.getPriceAsDouble()),
                     p.getStockQuantity(),
                     p.getStockStatus()
             });
@@ -1290,22 +1299,138 @@ public class DashboardFrame extends JFrame {
         }
     }
 
+    // ==========================================
+    // ADMIN ORDER MANAGEMENT
+    // ==========================================
+
     private JPanel createAdminOrdersPanel() {
         JPanel panel = new JPanel(new BorderLayout(10, 10));
         panel.setBackground(Color.WHITE);
         panel.setBorder(new EmptyBorder(15, 15, 15, 15));
 
-        String[] columns = {"Order ID", "Customer", "Date", "Amount ($)", "Payment", "Order Status"};
-        Object[][] data = {
-                {"ORD-1001", "rahul@example.com", "2026-10-18", "119.98", "Prepaid", "Pending"},
-                {"ORD-1002", "priya@example.com", "2026-10-17", "39.99", "COD", "Confirmed"},
-                {"ORD-1003", "amit@example.com", "2026-10-16", "79.99", "Prepaid", "Shipped"}
+        // Admin Filter Toolbar
+        JPanel toolBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 5));
+        toolBar.setBackground(Color.WHITE);
+
+        toolBar.add(new JLabel("Filter Orders by Status:"));
+        adminOrderStatusFilterCombo = new JComboBox<>(new String[]{"ALL", "PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"});
+        adminOrderStatusFilterCombo.addActionListener(e -> applyAdminOrderFilters());
+        toolBar.add(adminOrderStatusFilterCombo);
+
+        JButton updateStatusBtn = new JButton("Update Order Status");
+        updateStatusBtn.setBackground(new Color(37, 99, 235));
+        updateStatusBtn.setForeground(Color.WHITE);
+        updateStatusBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        updateStatusBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        updateStatusBtn.addActionListener(e -> handleAdminUpdateOrderStatus());
+        toolBar.add(updateStatusBtn);
+
+        JButton viewOrderBtn = new JButton("View Invoice & Details");
+        viewOrderBtn.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        viewOrderBtn.addActionListener(e -> handleAdminViewOrderDetails());
+        toolBar.add(viewOrderBtn);
+
+        panel.add(toolBar, BorderLayout.NORTH);
+
+        String[] columns = {"Order #", "User ID", "Date", "Total Amount ($)", "Payment Mode", "Order Status"};
+        adminOrdersTableModel = new DefaultTableModel(columns, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
         };
 
-        JTable table = new JTable(new DefaultTableModel(data, columns));
-        table.setRowHeight(28);
-        panel.add(new JScrollPane(table), BorderLayout.CENTER);
+        adminOrdersTable = new JTable(adminOrdersTableModel);
+        adminOrdersTable.setRowHeight(28);
+        adminOrdersTable.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        adminOrdersTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 12));
+
+        DefaultTableCellRenderer centerRenderer = new DefaultTableCellRenderer();
+        centerRenderer.setHorizontalAlignment(SwingConstants.CENTER);
+        adminOrdersTable.getColumnModel().getColumn(5).setCellRenderer(centerRenderer);
+
+        refreshAdminOrdersTable();
+
+        panel.add(new JScrollPane(adminOrdersTable), BorderLayout.CENTER);
         return panel;
+    }
+
+    private void refreshAdminOrdersTable() {
+        if (adminOrdersTableModel == null) return;
+        applyAdminOrderFilters();
+    }
+
+    private void applyAdminOrderFilters() {
+        if (adminOrdersTableModel == null) return;
+        String filter = adminOrderStatusFilterCombo != null ? (String) adminOrderStatusFilterCombo.getSelectedItem() : "ALL";
+
+        adminOrdersTableModel.setRowCount(0);
+        for (Order o : customerOrders) {
+            if ("ALL".equals(filter) || o.getOrderStatus().equalsIgnoreCase(filter)) {
+                adminOrdersTableModel.addRow(new Object[]{
+                        o.getOrderNumber(),
+                        "User #" + o.getUserId(),
+                        o.getOrderDate(),
+                        String.format("$%.2f", o.getTotalAmount()),
+                        o.getPaymentMethod(),
+                        o.getOrderStatus()
+                });
+            }
+        }
+    }
+
+    private Order getSelectedAdminOrder() {
+        int row = adminOrdersTable.getSelectedRow();
+        if (row < 0) {
+            ValidationUtil.showWarning(this, "Please select an order from the table first.", "Notice");
+            return null;
+        }
+
+        String orderNum = (String) adminOrdersTableModel.getValueAt(row, 0);
+        for (Order o : customerOrders) {
+            if (o.getOrderNumber().equalsIgnoreCase(orderNum)) {
+                return o;
+            }
+        }
+        return null;
+    }
+
+    private void handleAdminViewOrderDetails() {
+        Order selected = getSelectedAdminOrder();
+        if (selected == null) return;
+
+        String addr = selected.getShippingAddress() != null ? selected.getShippingAddress() : "Customer Address on File";
+        OrderDetailsDialog dialog = new OrderDetailsDialog(this, selected, addr);
+        dialog.setVisible(true);
+    }
+
+    private void handleAdminUpdateOrderStatus() {
+        Order selected = getSelectedAdminOrder();
+        if (selected == null) return;
+
+        String[] statuses = {"PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"};
+        String current = selected.getOrderStatus();
+
+        String newStatus = (String) JOptionPane.showInputDialog(
+                this,
+                "Select new status for order " + selected.getOrderNumber() + ":",
+                "Update Order Status",
+                JOptionPane.QUESTION_MESSAGE,
+                null,
+                statuses,
+                current
+        );
+
+        if (newStatus != null && !newStatus.equalsIgnoreCase(current)) {
+            selected.setOrderStatus(newStatus);
+            refreshAdminOrdersTable();
+            if (ordersTableModel != null) {
+                applyOrderFilters();
+            }
+            ValidationUtil.showSuccess(this,
+                    "Order <b>" + selected.getOrderNumber() + "</b> status updated to <b>" + newStatus + "</b>.",
+                    "Status Updated");
+        }
     }
 
     private JPanel createAdminReportsPanel() {
@@ -1313,8 +1438,15 @@ public class DashboardFrame extends JFrame {
         panel.setBackground(Color.WHITE);
         panel.setBorder(new EmptyBorder(30, 30, 30, 30));
 
-        panel.add(createKpiCard("Total Orders", "142", new Color(37, 99, 235)));
-        panel.add(createKpiCard("Total Revenue", "$9,450.00", new Color(16, 185, 129)));
+        panel.add(createKpiCard("Total Orders", String.valueOf(customerOrders.size()), new Color(37, 99, 235)));
+
+        double revenue = 0.0;
+        for (Order o : customerOrders) {
+            if (!"CANCELLED".equalsIgnoreCase(o.getOrderStatus())) {
+                revenue += o.getTotalAmount();
+            }
+        }
+        panel.add(createKpiCard("Total Sales Revenue", String.format("$%.2f", revenue), new Color(16, 185, 129)));
         panel.add(createKpiCard("Active Products", String.valueOf(catalogProducts.size()), new Color(139, 92, 246)));
 
         long lowStockCount = catalogProducts.stream().filter(Product::isLowStock).count();
@@ -1356,12 +1488,12 @@ public class DashboardFrame extends JFrame {
     // --- Helper to build initial sample products ---
     private List<Product> initializeSampleProducts() {
         List<Product> products = new ArrayList<>();
-        products.add(new Product(101, "Wireless Bluetooth Headphones", "Electronics", "Noise-cancelling over-ear wireless headphones with deep bass", 59.99, 25));
-        products.add(new Product(102, "Mechanical Gaming Keyboard", "Electronics", "RGB backlit blue switches with mechanical tactile feedback", 79.99, 14));
-        products.add(new Product(103, "Classic Cotton T-Shirt", "Clothing", "100% organic combed cotton everyday unisex wear", 19.99, 5));
-        products.add(new Product(104, "Java Programming: OOP Essentials", "Books", "Comprehensive guide to OOP, Collections, and Design Patterns in Java", 39.99, 30));
-        products.add(new Product(105, "Stainless Steel Water Bottle", "Home", "Vacuum insulated 750ml double-walled thermal flask", 14.99, 40));
-        products.add(new Product(106, "USB-C Fast Charging Hub", "Electronics", "6-in-1 multi-port adapter with 4K HDMI and 65W Power Delivery", 29.99, 18));
+        products.add(new Product(101, 1, "Electronics", "Wireless Bluetooth Headphones", "Noise-cancelling over-ear wireless headphones with deep bass", 59.99, 25));
+        products.add(new Product(102, 1, "Electronics", "Mechanical Gaming Keyboard", "RGB backlit blue switches with mechanical tactile feedback", 79.99, 14));
+        products.add(new Product(103, 2, "Clothing", "Classic Cotton T-Shirt", "100% organic combed cotton everyday unisex wear", 19.99, 5));
+        products.add(new Product(104, 3, "Books", "Java Programming: OOP Essentials", "Comprehensive guide to OOP, Collections, and Design Patterns in Java", 39.99, 30));
+        products.add(new Product(105, 4, "Home", "Stainless Steel Water Bottle", "Vacuum insulated 750ml double-walled thermal flask", 14.99, 40));
+        products.add(new Product(106, 1, "Electronics", "USB-C Fast Charging Hub", "6-in-1 multi-port adapter with 4K HDMI and 65W Power Delivery", 29.99, 18));
         return products;
     }
 
@@ -1369,21 +1501,21 @@ public class DashboardFrame extends JFrame {
     private List<Order> initializeSampleOrders() {
         List<Order> orders = new ArrayList<>();
 
-        Order o1 = new Order(1, "ORD-2026-001", 1, 79.98, "DELIVERED", "COD", "2026-10-15");
+        Order o1 = new Order(1, "ORD-2026-001", 1, 79.98, "DELIVERED", "COD", "124 Tech Park Road, Bengaluru", "2026-10-15");
         o1.addItem(new OrderItem(1, 1, 103, "Classic Cotton T-Shirt", 2, 19.99));
         o1.addItem(new OrderItem(2, 1, 104, "Java Programming: OOP Essentials", 1, 39.99));
         orders.add(o1);
 
-        Order o2 = new Order(2, "ORD-2026-002", 1, 59.99, "SHIPPED", "PREPAID", "2026-10-18");
+        Order o2 = new Order(2, "ORD-2026-002", 1, 59.99, "SHIPPED", "PREPAID", "124 Tech Park Road, Bengaluru", "2026-10-18");
         o2.addItem(new OrderItem(3, 2, 101, "Wireless Bluetooth Headphones", 1, 59.99));
         orders.add(o2);
 
-        Order o3 = new Order(3, "ORD-2026-003", 1, 94.98, "PENDING", "COD", "2026-10-20");
+        Order o3 = new Order(3, "ORD-2026-003", 1, 94.98, "PENDING", "COD", "124 Tech Park Road, Bengaluru", "2026-10-20");
         o3.addItem(new OrderItem(4, 3, 102, "Mechanical Gaming Keyboard", 1, 79.99));
         o3.addItem(new OrderItem(5, 3, 105, "Stainless Steel Water Bottle", 1, 14.99));
         orders.add(o3);
 
-        Order o4 = new Order(4, "ORD-2026-004", 1, 14.99, "CANCELLED", "COD", "2026-10-12");
+        Order o4 = new Order(4, "ORD-2026-004", 1, 14.99, "CANCELLED", "COD", "124 Tech Park Road, Bengaluru", "2026-10-12");
         o4.addItem(new OrderItem(6, 4, 105, "Stainless Steel Water Bottle", 1, 14.99));
         orders.add(o4);
 

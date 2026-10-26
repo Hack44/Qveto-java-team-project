@@ -33,6 +33,11 @@ public class Order {
         this.items = new ArrayList<>();
     }
 
+    public Order(int orderId, String orderNumber, int userId, double totalAmount, String orderStatus, String paymentMethod, String shippingAddress, String orderDate) {
+        this(orderId, orderNumber, userId, totalAmount, orderStatus, paymentMethod, orderDate);
+        this.shippingAddress = shippingAddress;
+    }
+
     public int getOrderId() {
         return orderId;
     }
@@ -96,6 +101,7 @@ public class Order {
     public void setShippingAddress(String shippingAddress) {
         this.shippingAddress = shippingAddress;
     }
+
     public List<OrderItem> getItems() {
         return items;
     }

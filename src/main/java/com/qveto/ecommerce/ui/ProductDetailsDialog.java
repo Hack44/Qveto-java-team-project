@@ -68,7 +68,7 @@ public class ProductDetailsDialog extends JDialog {
 
         detailsGrid.add(createMetaLabel("Product ID:", "#" + product.getProductId()));
         detailsGrid.add(createMetaLabel("Category:", product.getCategory()));
-        detailsGrid.add(createMetaLabel("Unit Price:", String.format("$%.2f", product.getPrice())));
+        detailsGrid.add(createMetaLabel("Unit Price:", String.format("$%.2f", product.getPriceAsDouble())));
         detailsGrid.add(createMetaLabel("Available Stock:", product.getStockQuantity() + " units"));
         detailsGrid.add(createMetaLabel("Inventory Status:", product.getStockStatus()));
         detailsGrid.add(createMetaLabel("Shipping:", "Standard Free Delivery"));

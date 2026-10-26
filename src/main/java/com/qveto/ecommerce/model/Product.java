@@ -18,6 +18,7 @@ public class Product {
     private String createdAt;
 
     public Product() {
+        this.lowStockThreshold = 5;
     }
 
     public Product(int productId, int categoryId, String productName,
@@ -32,6 +33,22 @@ public class Product {
         this.lowStockThreshold = lowStockThreshold;
     }
 
+    public Product(int productId, int categoryId, String categoryName, String productName,
+                   String description, BigDecimal price, int stockQuantity, int lowStockThreshold) {
+        this(productId, categoryId, productName, description, price, stockQuantity, lowStockThreshold);
+        this.categoryName = categoryName;
+    }
+
+    public Product(int productId, int categoryId, String categoryName, String productName,
+                   String description, double price, int stockQuantity) {
+        this(productId, categoryId, categoryName, productName, description, BigDecimal.valueOf(price), stockQuantity, 5);
+    }
+
+    public Product(int productId, String productName, String categoryName,
+                   String description, double price, int stockQuantity) {
+        this(productId, 1, categoryName, productName, description, BigDecimal.valueOf(price), stockQuantity, 5);
+    }
+
     public int getProductId() { return productId; }
     public void setProductId(int productId) { this.productId = productId; }
 
@@ -41,6 +58,14 @@ public class Product {
     public String getCategoryName() { return categoryName; }
     public void setCategoryName(String categoryName) { this.categoryName = categoryName; }
 
+    // Convenience alias for UI integration
+    public String getCategory() {
+        return categoryName != null ? categoryName : "General";
+    }
+    public void setCategory(String category) {
+        this.categoryName = category;
+    }
+
     public String getProductName() { return productName; }
     public void setProductName(String productName) { this.productName = productName; }
 
@@ -49,6 +74,10 @@ public class Product {
 
     public BigDecimal getPrice() { return price; }
     public void setPrice(BigDecimal price) { this.price = price; }
+
+    public double getPriceAsDouble() {
+        return price != null ? price.doubleValue() : 0.0;
+    }
 
     public int getStockQuantity() { return stockQuantity; }
     public void setStockQuantity(int stockQuantity) { this.stockQuantity = stockQuantity; }
@@ -63,7 +92,17 @@ public class Product {
      * Returns true if current stock is at or below the low-stock threshold.
      */
     public boolean isLowStock() {
-        return stockQuantity <= lowStockThreshold;
+        return stockQuantity <= lowStockThreshold && stockQuantity > 0;
+    }
+
+    public boolean isOutOfStock() {
+        return stockQuantity <= 0;
+    }
+
+    public String getStockStatus() {
+        if (isOutOfStock()) return "Out of Stock";
+        if (isLowStock()) return "Low Stock (" + stockQuantity + ")";
+        return "In Stock (" + stockQuantity + ")";
     }
 
     /**
