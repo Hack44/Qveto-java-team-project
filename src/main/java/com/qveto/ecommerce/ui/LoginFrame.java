@@ -1,6 +1,8 @@
 package com.qveto.ecommerce.ui;
 
 import com.qveto.ecommerce.model.User;
+import com.qveto.ecommerce.util.DBStatusUtil;
+import com.qveto.ecommerce.util.UserStore;
 import com.qveto.ecommerce.util.ValidationUtil;
 
 import javax.swing.*;
@@ -15,6 +17,8 @@ import java.awt.event.ActionEvent;
  * - Login & Registration screens (Customer & Admin)
  * - Password visibility toggle for better UX
  * - Input validation & user-friendly error alerts
+ * - Integration with JDBC UserDAO layer and in-memory demo store
+ * - Real-time Database Connectivity Indicator
  * - Authentication flow and navigation to Dashboard
  */
 public class LoginFrame extends JFrame {
@@ -43,8 +47,8 @@ public class LoginFrame extends JFrame {
 
     private void initComponents() {
         setTitle("Qveto E-Commerce & Inventory Management");
-        setSize(500, 620);
-        setMinimumSize(new Dimension(460, 580));
+        setSize(500, 640);
+        setMinimumSize(new Dimension(460, 600));
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null); // Center on screen
 
@@ -52,9 +56,9 @@ public class LoginFrame extends JFrame {
         mainPanel.setBackground(Color.WHITE);
 
         // --- Header Banner ---
-        JPanel headerPanel = new JPanel(new GridLayout(2, 1, 0, 4));
+        JPanel headerPanel = new JPanel(new GridLayout(3, 1, 0, 4));
         headerPanel.setBackground(new Color(24, 43, 73));
-        headerPanel.setBorder(new EmptyBorder(25, 20, 20, 20));
+        headerPanel.setBorder(new EmptyBorder(18, 20, 16, 20));
 
         JLabel titleLabel = new JLabel("QVETO STORE", SwingConstants.CENTER);
         titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 22));
@@ -64,8 +68,11 @@ public class LoginFrame extends JFrame {
         subtitleLabel.setFont(new Font("Segoe UI", Font.PLAIN, 13));
         subtitleLabel.setForeground(new Color(200, 215, 235));
 
+        JLabel dbStatusLabel = new JLabel(DBStatusUtil.getStatusBadgeHtml(), SwingConstants.CENTER);
+
         headerPanel.add(titleLabel);
         headerPanel.add(subtitleLabel);
+        headerPanel.add(dbStatusLabel);
         mainPanel.add(headerPanel, BorderLayout.NORTH);
 
         // --- Tabs ---
@@ -182,7 +189,7 @@ public class LoginFrame extends JFrame {
         gbc.gridy = 0;
         panel.add(badgeLabel, gbc);
 
-        JLabel userLabel = new JLabel("Admin Username");
+        JLabel userLabel = new JLabel("Admin Username / Email");
         userLabel.setFont(new Font("Segoe UI", Font.BOLD, 12));
         gbc.gridy = 1;
         panel.add(userLabel, gbc);
@@ -336,16 +343,12 @@ public class LoginFrame extends JFrame {
             return;
         }
 
-        // Authentication logic
-        if (email.equalsIgnoreCase("customer@qveto.com") && password.equals("pass123") || !email.isEmpty() && password.length() >= 6) {
-            String name = email.contains("@") ? email.split("@")[0] : email;
-            name = name.substring(0, 1).toUpperCase() + name.substring(1);
-
-            User user = new User(1, name, email, "CUSTOMER");
+        User user = UserStore.authenticate(email, password);
+        if (user != null) {
             ValidationUtil.showSuccess(this, "Customer Login Successful!<br/>Welcome back, <b>" + user.getFullName() + "</b>.", "Login Successful");
             openDashboard(user);
         } else {
-            ValidationUtil.showError(this, "Invalid credentials. Please check your password (min 6 chars) or use demo: <b>customer@qveto.com</b> / <b>pass123</b>.", "Authentication Failed");
+            ValidationUtil.showError(this, "Invalid credentials. Please verify your password (min 6 chars) or use demo: <b>customer@qveto.com</b> / <b>pass123</b>.", "Authentication Failed");
         }
     }
 
@@ -364,8 +367,8 @@ public class LoginFrame extends JFrame {
             return;
         }
 
-        if (username.equals("admin") && password.equals("admin123")) {
-            User adminUser = new User(99, "System Administrator", "admin@qveto.com", "ADMIN");
+        User adminUser = UserStore.authenticate(username, password);
+        if (adminUser != null && adminUser.isAdmin()) {
             ValidationUtil.showSuccess(this, "Admin Authentication Successful!<br/>Opening Management Dashboard...", "Admin Authorized");
             openDashboard(adminUser);
         } else {
@@ -406,8 +409,17 @@ public class LoginFrame extends JFrame {
             return;
         }
 
+        // Check if email is already taken
+        if (UserStore.emailExists(email)) {
+            ValidationUtil.showError(this, "An account with email <b>" + email + "</b> already exists.<br/>Please log in or register with another email.", "Account Exists");
+            regEmailField.requestFocus();
+            return;
+        }
+
+        User newUser = UserStore.registerCustomer(name, email, password, phone, "Registered customer account");
+
         ValidationUtil.showSuccess(this,
-                "Account created successfully for <b>" + name + "</b>!<br/>You can now log in with your credentials.",
+                "Account created successfully for <b>" + newUser.getFullName() + "</b>!<br/>You can now log in with your credentials.",
                 "Registration Successful");
 
         // Pre-fill email in customer login and switch tab
