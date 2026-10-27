@@ -1,0 +1,15 @@
+# ============================================================
+#  Qveto E-Commerce — Database Connection Configuration
+# ============================================================
+#
+#  SETUP INSTRUCTIONS:
+#  1. Copy this file to:  src/main/resources/db.properties
+#  2. Fill in your local MySQL password below.
+#  3. The real db.properties is listed in .gitignore and will
+#     NEVER be committed — keep your credentials safe.
+#
+# ============================================================
+
+db.url=jdbc:mysql://localhost:3306/ecommerce_db
+db.user=root
+db.password=REPLACE_WITH_YOUR_MYSQL_PASSWORD
