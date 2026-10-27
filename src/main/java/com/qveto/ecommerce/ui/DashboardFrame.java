@@ -4,6 +4,8 @@ import com.qveto.ecommerce.model.Order;
 import com.qveto.ecommerce.model.OrderItem;
 import com.qveto.ecommerce.model.Product;
 import com.qveto.ecommerce.model.User;
+import com.qveto.ecommerce.util.DBStatusUtil;
+import com.qveto.ecommerce.util.UserStore;
 import com.qveto.ecommerce.util.ValidationUtil;
 
 import javax.swing.*;
@@ -22,10 +24,12 @@ import java.util.List;
  * - Product Catalog Discovery: Search, category filtering, and product details modal
  * - Interactive Shopping Cart with live total calculation & quantity updates
  * - Checkout workflow connecting Cart to Order History with shipping address
- * - Customer Profile management (Edit contact/address, change password)
+ * - Customer Profile management (Edit contact/address, change password synced with DB)
  * - Order History screen with status filtering, invoice modal, and order cancellation
  * - Admin Product management (Add, delete, and view catalog inventory)
  * - Admin Order Management (View all orders, inspect invoices, and update order statuses)
+ * - Admin User Management (Discover, search, filter, inspect dossier, and deactivate accounts)
+ * - Real-time Database Connectivity Indicator (MySQL vs Standalone Demo Mode)
  */
 public class DashboardFrame extends JFrame {
 
@@ -51,6 +55,13 @@ public class DashboardFrame extends JFrame {
     private DefaultTableModel adminOrdersTableModel;
     private JTable adminOrdersTable;
     private JComboBox<String> adminOrderStatusFilterCombo;
+
+    // Admin User Management UI components
+    private DefaultTableModel adminUsersTableModel;
+    private JTable adminUsersTable;
+    private JTextField adminUserSearchField;
+    private JComboBox<String> adminUserRoleFilterCombo;
+    private JPanel adminUsersKpiPanel;
 
     // Cart UI components
     private JPanel cartRootPanel;
@@ -85,8 +96,8 @@ public class DashboardFrame extends JFrame {
 
     private void initComponents() {
         setTitle("Qveto E-Commerce — " + (currentUser.isAdmin() ? "Admin Management" : "Customer Portal"));
-        setSize(960, 660);
-        setMinimumSize(new Dimension(860, 540));
+        setSize(980, 680);
+        setMinimumSize(new Dimension(880, 560));
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 
@@ -105,6 +116,9 @@ public class DashboardFrame extends JFrame {
 
         JPanel userPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 15, 0));
         userPanel.setOpaque(false);
+
+        JLabel dbStatusBadge = new JLabel(DBStatusUtil.getStatusBadgeHtml());
+        userPanel.add(dbStatusBadge);
 
         JLabel userLabel = new JLabel("Welcome, " + currentUser.getFullName() + " (" + currentUser.getRole() + ")");
         userLabel.setFont(new Font("Segoe UI", Font.PLAIN, 13));
@@ -132,6 +146,7 @@ public class DashboardFrame extends JFrame {
         if (currentUser.isAdmin()) {
             tabbedPane.addTab("Inventory & Catalog", createAdminCatalogPanel());
             tabbedPane.addTab("Customer Orders", createAdminOrdersPanel());
+            tabbedPane.addTab("User Management", createAdminUsersPanel());
             tabbedPane.addTab("Reports & KPIs", createAdminReportsPanel());
         } else {
             tabbedPane.addTab("Browse Products", createCustomerCatalogPanel());
@@ -822,6 +837,9 @@ public class DashboardFrame extends JFrame {
                 return;
             }
 
+            // Sync with UserStore / UserDAO
+            UserStore.updateProfile(currentUser.getUserId(), newName, newPhone, newAddress);
+
             currentUser.setFullName(newName);
             currentUser.setPhone(newPhone);
             currentUser.setAddress(newAddress);
@@ -901,6 +919,13 @@ public class DashboardFrame extends JFrame {
             }
             if (!next.equals(conf)) {
                 ValidationUtil.showError(dialog, "New passwords do not match. Please re-enter.", "Validation Error");
+                return;
+            }
+
+            // Sync with UserStore / UserDAO
+            boolean changed = UserStore.changePassword(currentUser.getUserId(), curr, next);
+            if (!changed) {
+                ValidationUtil.showError(dialog, "Current password is incorrect. Please try again.", "Authentication Error");
                 return;
             }
 
@@ -1430,6 +1455,254 @@ public class DashboardFrame extends JFrame {
             ValidationUtil.showSuccess(this,
                     "Order <b>" + selected.getOrderNumber() + "</b> status updated to <b>" + newStatus + "</b>.",
                     "Status Updated");
+        }
+    }
+
+    // ==========================================
+    // ADMIN USER MANAGEMENT
+    // ==========================================
+
+    private JPanel createAdminUsersPanel() {
+        JPanel panel = new JPanel(new BorderLayout(10, 10));
+        panel.setBackground(Color.WHITE);
+        panel.setBorder(new EmptyBorder(15, 15, 15, 15));
+
+        // North Container: KPI Summary Cards + Filter Toolbar
+        JPanel northContainer = new JPanel();
+        northContainer.setLayout(new BoxLayout(northContainer, BoxLayout.Y_AXIS));
+        northContainer.setOpaque(false);
+
+        // Metric Cards Row
+        adminUsersKpiPanel = new JPanel(new GridLayout(1, 4, 12, 0));
+        adminUsersKpiPanel.setOpaque(false);
+        adminUsersKpiPanel.setBorder(new EmptyBorder(0, 0, 12, 0));
+        updateAdminUserKpis();
+        northContainer.add(adminUsersKpiPanel);
+
+        // Filter / Search Toolbar
+        JPanel toolBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        toolBar.setBackground(Color.WHITE);
+
+        toolBar.add(new JLabel("Search:"));
+        adminUserSearchField = new JTextField(15);
+        adminUserSearchField.addActionListener(e -> applyAdminUserFilters());
+        toolBar.add(adminUserSearchField);
+
+        toolBar.add(new JLabel("Role:"));
+        adminUserRoleFilterCombo = new JComboBox<>(new String[]{"ALL", "CUSTOMER", "ADMIN"});
+        adminUserRoleFilterCombo.addActionListener(e -> applyAdminUserFilters());
+        toolBar.add(adminUserRoleFilterCombo);
+
+        JButton filterBtn = new JButton("Filter");
+        filterBtn.setBackground(new Color(37, 99, 235));
+        filterBtn.setForeground(Color.WHITE);
+        filterBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        filterBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        filterBtn.addActionListener(e -> applyAdminUserFilters());
+        toolBar.add(filterBtn);
+
+        JButton resetBtn = new JButton("Reset");
+        resetBtn.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        resetBtn.addActionListener(e -> {
+            adminUserSearchField.setText("");
+            adminUserRoleFilterCombo.setSelectedIndex(0);
+            applyAdminUserFilters();
+        });
+        toolBar.add(resetBtn);
+
+        JButton refreshBtn = new JButton("Refresh");
+        refreshBtn.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        refreshBtn.addActionListener(e -> refreshAdminUsersTable());
+        toolBar.add(refreshBtn);
+
+        JButton viewUserBtn = new JButton("View User Dossier");
+        viewUserBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        viewUserBtn.setBackground(new Color(15, 23, 42));
+        viewUserBtn.setForeground(Color.WHITE);
+        viewUserBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        viewUserBtn.addActionListener(e -> handleAdminViewUserDetails());
+        toolBar.add(viewUserBtn);
+
+        JButton deleteUserBtn = new JButton("Deactivate User");
+        deleteUserBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        deleteUserBtn.setBackground(new Color(220, 38, 38));
+        deleteUserBtn.setForeground(Color.WHITE);
+        deleteUserBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        deleteUserBtn.addActionListener(e -> handleAdminDeleteUser());
+        toolBar.add(deleteUserBtn);
+
+        northContainer.add(toolBar);
+        panel.add(northContainer, BorderLayout.NORTH);
+
+        // Table Model & JTable
+        String[] columns = {"User ID", "Full Name", "Email Address", "Role", "Phone Number", "Shipping Address", "Registration Date"};
+        adminUsersTableModel = new DefaultTableModel(columns, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+        };
+
+        adminUsersTable = new JTable(adminUsersTableModel);
+        adminUsersTable.setRowHeight(30);
+        adminUsersTable.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        adminUsersTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 12));
+        adminUsersTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+
+        // Center renderers for ID and Date
+        DefaultTableCellRenderer centerRenderer = new DefaultTableCellRenderer();
+        centerRenderer.setHorizontalAlignment(SwingConstants.CENTER);
+        adminUsersTable.getColumnModel().getColumn(0).setCellRenderer(centerRenderer);
+        adminUsersTable.getColumnModel().getColumn(6).setCellRenderer(centerRenderer);
+
+        // Custom Role Badge Renderer
+        adminUsersTable.getColumnModel().getColumn(3).setCellRenderer(new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+                JLabel lbl = (JLabel) super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+                lbl.setHorizontalAlignment(SwingConstants.CENTER);
+                String role = value != null ? value.toString() : "";
+                if ("ADMIN".equalsIgnoreCase(role)) {
+                    lbl.setText("<html><b style='color: #dc2626;'>[ADMIN]</b></html>");
+                } else {
+                    lbl.setText("<html><b style='color: #2563eb;'>CUSTOMER</b></html>");
+                }
+                return lbl;
+            }
+        });
+
+        // Double click to view dossier
+        adminUsersTable.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent evt) {
+                if (evt.getClickCount() == 2) {
+                    handleAdminViewUserDetails();
+                }
+            }
+        });
+
+        panel.add(new JScrollPane(adminUsersTable), BorderLayout.CENTER);
+        refreshAdminUsersTable();
+
+        return panel;
+    }
+
+    private void updateAdminUserKpis() {
+        if (adminUsersKpiPanel == null) return;
+        adminUsersKpiPanel.removeAll();
+
+        List<User> allUsers = UserStore.getAllUsers();
+        long totalUsers = allUsers.size();
+        long customerCount = allUsers.stream().filter(u -> !u.isAdmin()).count();
+        long adminCount = allUsers.stream().filter(User::isAdmin).count();
+
+        adminUsersKpiPanel.add(createKpiCard("Total Registered Users", String.valueOf(totalUsers), new Color(37, 99, 235)));
+        adminUsersKpiPanel.add(createKpiCard("Active Customers", String.valueOf(customerCount), new Color(16, 185, 129)));
+        adminUsersKpiPanel.add(createKpiCard("Administrators", String.valueOf(adminCount), new Color(220, 38, 38)));
+        adminUsersKpiPanel.add(createKpiCard("Database Mode", DBStatusUtil.getStatusText(), new Color(79, 70, 229)));
+
+        adminUsersKpiPanel.revalidate();
+        adminUsersKpiPanel.repaint();
+    }
+
+    private void refreshAdminUsersTable() {
+        if (adminUsersTableModel == null) return;
+        applyAdminUserFilters();
+        updateAdminUserKpis();
+    }
+
+    private void applyAdminUserFilters() {
+        if (adminUsersTableModel == null) return;
+        String search = adminUserSearchField != null ? adminUserSearchField.getText().trim().toLowerCase() : "";
+        String roleFilter = adminUserRoleFilterCombo != null ? (String) adminUserRoleFilterCombo.getSelectedItem() : "ALL";
+
+        List<User> allUsers = UserStore.getAllUsers();
+        adminUsersTableModel.setRowCount(0);
+
+        for (User u : allUsers) {
+            boolean matchesSearch = search.isEmpty()
+                    || u.getFullName().toLowerCase().contains(search)
+                    || u.getEmail().toLowerCase().contains(search)
+                    || String.valueOf(u.getUserId()).contains(search);
+
+            boolean matchesRole = "ALL".equalsIgnoreCase(roleFilter)
+                    || u.getRole().equalsIgnoreCase(roleFilter);
+
+            if (matchesSearch && matchesRole) {
+                adminUsersTableModel.addRow(new Object[]{
+                        "#" + u.getUserId(),
+                        u.getFullName(),
+                        u.getEmail(),
+                        u.getRole(),
+                        u.getPhone().isEmpty() ? "N/A" : u.getPhone(),
+                        u.getAddress().isEmpty() ? "N/A" : u.getAddress(),
+                        u.getCreatedAt().isEmpty() ? "Recent" : u.getCreatedAt()
+                });
+            }
+        }
+    }
+
+    private void handleAdminViewUserDetails() {
+        int selectedRow = adminUsersTable.getSelectedRow();
+        if (selectedRow == -1) {
+            ValidationUtil.showWarning(this, "Please select a user from the table to view their dossier.", "No User Selected");
+            return;
+        }
+
+        String idStr = (String) adminUsersTableModel.getValueAt(selectedRow, 0);
+        int userId = Integer.parseInt(idStr.replace("#", ""));
+
+        List<User> allUsers = UserStore.getAllUsers();
+        User selectedUser = null;
+        for (User u : allUsers) {
+            if (u.getUserId() == userId) {
+                selectedUser = u;
+                break;
+            }
+        }
+
+        if (selectedUser == null) {
+            ValidationUtil.showError(this, "User could not be found.", "Error");
+            return;
+        }
+
+        final int targetId = userId;
+        int orderCount = (int) customerOrders.stream().filter(o -> o.getUserId() == targetId).count();
+
+        UserDetailsDialog dialog = new UserDetailsDialog(this, selectedUser, orderCount);
+        dialog.setVisible(true);
+    }
+
+    private void handleAdminDeleteUser() {
+        int selectedRow = adminUsersTable.getSelectedRow();
+        if (selectedRow == -1) {
+            ValidationUtil.showWarning(this, "Please select a user to deactivate.", "No User Selected");
+            return;
+        }
+
+        String idStr = (String) adminUsersTableModel.getValueAt(selectedRow, 0);
+        int targetUserId = Integer.parseInt(idStr.replace("#", ""));
+        String targetUserName = (String) adminUsersTableModel.getValueAt(selectedRow, 1);
+        String targetUserRole = (String) adminUsersTableModel.getValueAt(selectedRow, 3);
+
+        // Security safeguard: Admin cannot delete their own active account
+        if (targetUserId == currentUser.getUserId()) {
+            ValidationUtil.showError(this, "You cannot deactivate or delete your own active administrator account.", "Action Prohibited");
+            return;
+        }
+
+        boolean confirm = ValidationUtil.showConfirm(this,
+                "Are you sure you want to deactivate and remove account: <b>" + targetUserName + "</b> (#" + targetUserId + " - " + targetUserRole + ")?<br/><br/>This operation will remove the account from the active registry.",
+                "Confirm Account Deactivation");
+
+        if (confirm) {
+            boolean success = UserStore.deleteUser(targetUserId);
+            if (success) {
+                ValidationUtil.showSuccess(this, "Account <b>" + targetUserName + "</b> was successfully deactivated.", "Account Removed");
+                refreshAdminUsersTable();
+            } else {
+                ValidationUtil.showError(this, "Failed to deactivate account.", "Operation Failed");
+            }
         }
     }
 
