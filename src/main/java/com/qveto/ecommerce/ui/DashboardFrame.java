@@ -5,6 +5,8 @@ import com.qveto.ecommerce.model.OrderItem;
 import com.qveto.ecommerce.model.Product;
 import com.qveto.ecommerce.model.User;
 import com.qveto.ecommerce.util.DBStatusUtil;
+import com.qveto.ecommerce.util.OrderStore;
+import com.qveto.ecommerce.util.ProductStore;
 import com.qveto.ecommerce.util.UserStore;
 import com.qveto.ecommerce.util.ValidationUtil;
 
@@ -23,10 +25,10 @@ import java.util.List;
  * Developed for Member 2 tasks:
  * - Product Catalog Discovery: Search, category filtering, and product details modal
  * - Interactive Shopping Cart with live total calculation & quantity updates
- * - Checkout workflow connecting Cart to Order History with shipping address
+ * - Checkout workflow connecting Cart to Order History with automatic inventory deduction
  * - Customer Profile management (Edit contact/address, change password synced with DB)
- * - Order History screen with status filtering, invoice modal, and order cancellation
- * - Admin Product management (Add, delete, and view catalog inventory)
+ * - Order History screen with status filtering, invoice export, and order cancellation with stock replenishment
+ * - Admin Product management (Add, edit & restock inventory, delete, low stock alerts)
  * - Admin Order Management (View all orders, inspect invoices, and update order statuses)
  * - Admin User Management (Discover, search, filter, inspect dossier, and deactivate accounts)
  * - Real-time Database Connectivity Indicator (MySQL vs Standalone Demo Mode)
@@ -50,6 +52,7 @@ public class DashboardFrame extends JFrame {
     // Admin Catalog UI components
     private DefaultTableModel adminCatalogTableModel;
     private JTable adminCatalogTable;
+    private JCheckBox adminLowStockFilterCheck;
 
     // Admin Orders UI components
     private DefaultTableModel adminOrdersTableModel;
@@ -83,8 +86,8 @@ public class DashboardFrame extends JFrame {
 
     public DashboardFrame(User user) {
         this.currentUser = user;
-        this.catalogProducts = initializeSampleProducts();
-        this.customerOrders = initializeSampleOrders();
+        this.catalogProducts = new ArrayList<>(ProductStore.getAllProducts());
+        this.customerOrders = new ArrayList<>(currentUser.isAdmin() ? OrderStore.getAllOrders() : OrderStore.getOrdersByUser(currentUser.getUserId()));
         this.shoppingCart = new ArrayList<>();
         initComponents();
     }
@@ -267,20 +270,10 @@ public class DashboardFrame extends JFrame {
     }
 
     private void applyCatalogFilters() {
-        String keyword = customerSearchField.getText().trim().toLowerCase();
-        String selectedCat = (String) customerCategoryCombo.getSelectedItem();
+        String keyword = customerSearchField != null ? customerSearchField.getText().trim() : "";
+        String selectedCat = customerCategoryCombo != null ? (String) customerCategoryCombo.getSelectedItem() : "All Categories";
 
-        List<Product> filtered = new ArrayList<>();
-        for (Product p : catalogProducts) {
-            boolean matchesCat = "All Categories".equals(selectedCat) || p.getCategory().equalsIgnoreCase(selectedCat);
-            boolean matchesKeyword = keyword.isEmpty()
-                    || p.getProductName().toLowerCase().contains(keyword)
-                    || p.getDescription().toLowerCase().contains(keyword);
-
-            if (matchesCat && matchesKeyword) {
-                filtered.add(p);
-            }
-        }
+        List<Product> filtered = ProductStore.searchProducts(keyword, selectedCat);
         refreshCustomerCatalogTable(filtered);
     }
 
@@ -635,12 +628,20 @@ public class DashboardFrame extends JFrame {
                 newOrder.addItem(new OrderItem(ci.getOrderItemId(), newOrder.getOrderId(), ci.getProductId(), ci.getProductName(), ci.getQuantity(), ci.getUnitPrice()));
             }
 
-            customerOrders.add(0, newOrder); // add to top of orders list
+            // Persist order & deduct inventory stock
+            OrderStore.placeOrder(newOrder);
+            customerOrders.add(0, newOrder); // add to top of local orders list
+
+            // Refresh products catalog after stock adjustment
+            catalogProducts.clear();
+            catalogProducts.addAll(ProductStore.getAllProducts());
+
             shoppingCart.clear();
             updateCartBadge();
             renderCartContent();
             applyOrderFilters();
             refreshAdminOrdersTable();
+            refreshCustomerCatalogTable(catalogProducts);
 
             dialog.dispose();
 
@@ -651,7 +652,7 @@ public class DashboardFrame extends JFrame {
                     "🎉 <b>Order Placed Successfully!</b><br/>"
                             + "Order Reference: <b>" + newOrderCode + "</b><br/>"
                             + "Total Amount: <b>$" + String.format("%.2f", grandTotal) + "</b> (" + selectedPayment + ")<br/>"
-                            + "You can track its status in your <b>Order History</b>.",
+                            + "Inventory stock has been reserved. You can track status in <b>Order History</b>.",
                     "Order Placed");
         });
 
@@ -1103,12 +1104,18 @@ public class DashboardFrame extends JFrame {
                 "Confirm Cancellation");
 
         if (confirm) {
-            selected.setOrderStatus("CANCELLED");
+            OrderStore.cancelOrder(selected);
+            catalogProducts.clear();
+            catalogProducts.addAll(ProductStore.getAllProducts());
+
             applyOrderFilters();
             refreshAdminOrdersTable();
+            refreshCustomerCatalogTable(catalogProducts);
+            refreshAdminCatalogTable();
+
             ValidationUtil.showSuccess(this,
                     "Order <b>" + selected.getOrderNumber() + "</b> has been successfully cancelled.<br/>"
-                            + "Inventory stock has been restored.",
+                            + "Inventory stock has been replenished.",
                     "Order Cancelled");
         }
     }
@@ -1133,6 +1140,14 @@ public class DashboardFrame extends JFrame {
         addBtn.addActionListener(e -> showAddProductDialog());
         toolBar.add(addBtn);
 
+        JButton editBtn = new JButton("Edit / Restock");
+        editBtn.setBackground(new Color(37, 99, 235));
+        editBtn.setForeground(Color.WHITE);
+        editBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        editBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        editBtn.addActionListener(e -> handleAdminEditProduct());
+        toolBar.add(editBtn);
+
         JButton viewBtn = new JButton("View Details");
         viewBtn.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         viewBtn.addActionListener(e -> handleAdminViewProductDetails());
@@ -1143,6 +1158,13 @@ public class DashboardFrame extends JFrame {
         deleteBtn.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         deleteBtn.addActionListener(e -> handleAdminDeleteProduct());
         toolBar.add(deleteBtn);
+
+        adminLowStockFilterCheck = new JCheckBox("Low Stock Alerts Only");
+        adminLowStockFilterCheck.setBackground(Color.WHITE);
+        adminLowStockFilterCheck.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        adminLowStockFilterCheck.setForeground(new Color(185, 28, 28));
+        adminLowStockFilterCheck.addActionListener(e -> filterAdminCatalogByLowStock(adminLowStockFilterCheck.isSelected()));
+        toolBar.add(adminLowStockFilterCheck);
 
         panel.add(toolBar, BorderLayout.NORTH);
 
@@ -1158,6 +1180,42 @@ public class DashboardFrame extends JFrame {
         adminCatalogTable.setRowHeight(28);
         adminCatalogTable.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         adminCatalogTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 12));
+
+        // Center renderers
+        DefaultTableCellRenderer centerRenderer = new DefaultTableCellRenderer();
+        centerRenderer.setHorizontalAlignment(SwingConstants.CENTER);
+        adminCatalogTable.getColumnModel().getColumn(0).setCellRenderer(centerRenderer);
+        adminCatalogTable.getColumnModel().getColumn(5).setCellRenderer(centerRenderer);
+
+        // Stock quantity custom renderer with low stock highlighting
+        adminCatalogTable.getColumnModel().getColumn(4).setCellRenderer(new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+                JLabel lbl = (JLabel) super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+                lbl.setHorizontalAlignment(SwingConstants.CENTER);
+                if (value instanceof Number) {
+                    int qty = ((Number) value).intValue();
+                    if (qty <= 0) {
+                        lbl.setText("<html><b style='color: #dc2626;'>0 (OUT OF STOCK)</b></html>");
+                    } else if (qty <= 5) {
+                        lbl.setText("<html><b style='color: #d97706;'>" + qty + " (LOW)</b></html>");
+                    } else {
+                        lbl.setText(String.valueOf(qty));
+                    }
+                }
+                return lbl;
+            }
+        });
+
+        // Double click to edit/restock
+        adminCatalogTable.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent evt) {
+                if (evt.getClickCount() == 2) {
+                    handleAdminEditProduct();
+                }
+            }
+        });
 
         refreshAdminCatalogTable();
 
@@ -1178,6 +1236,51 @@ public class DashboardFrame extends JFrame {
                     p.getStockStatus()
             });
         }
+    }
+
+    private void filterAdminCatalogByLowStock(boolean lowStockOnly) {
+        if (adminCatalogTableModel == null) return;
+        adminCatalogTableModel.setRowCount(0);
+        List<Product> list = lowStockOnly ? ProductStore.getLowStockProducts() : catalogProducts;
+        for (Product p : list) {
+            adminCatalogTableModel.addRow(new Object[]{
+                    p.getProductId(),
+                    p.getProductName(),
+                    p.getCategory(),
+                    String.format("$%.2f", p.getPriceAsDouble()),
+                    p.getStockQuantity(),
+                    p.getStockStatus()
+            });
+        }
+    }
+
+    private void handleAdminEditProduct() {
+        int row = adminCatalogTable.getSelectedRow();
+        if (row < 0) {
+            ValidationUtil.showWarning(this, "Please select a product from the table to edit or restock.", "Notice");
+            return;
+        }
+
+        int productId = (int) adminCatalogTableModel.getValueAt(row, 0);
+        Product selected = null;
+        for (Product p : catalogProducts) {
+            if (p.getProductId() == productId) {
+                selected = p;
+                break;
+            }
+        }
+        if (selected == null) return;
+
+        EditProductDialog dialog = new EditProductDialog(this, selected, updatedProduct -> {
+            ProductStore.updateProduct(updatedProduct);
+            catalogProducts.clear();
+            catalogProducts.addAll(ProductStore.getAllProducts());
+            refreshAdminCatalogTable();
+            if (customerCatalogTableModel != null) {
+                applyCatalogFilters();
+            }
+        });
+        dialog.setVisible(true);
     }
 
     private void showAddProductDialog() {
@@ -1262,11 +1365,13 @@ public class DashboardFrame extends JFrame {
                 return;
             }
 
-            int newId = 100 + catalogProducts.size() + 1;
             String category = (String) categoryCombo.getSelectedItem();
-            Product newProduct = new Product(newId, name, category, desc, price, stock);
+            Product newProduct = new Product(0, 1, category, name, desc, price, stock);
 
-            catalogProducts.add(newProduct);
+            Product added = ProductStore.addProduct(newProduct);
+            catalogProducts.clear();
+            catalogProducts.addAll(ProductStore.getAllProducts());
+
             refreshAdminCatalogTable();
             if (customerCatalogTableModel != null) {
                 applyCatalogFilters();
@@ -1315,7 +1420,9 @@ public class DashboardFrame extends JFrame {
         String name = (String) adminCatalogTableModel.getValueAt(row, 1);
 
         if (ValidationUtil.showConfirm(this, "Are you sure you want to delete product <b>" + name + "</b> (ID: #" + productId + ")?", "Confirm Delete")) {
-            catalogProducts.removeIf(p -> p.getProductId() == productId);
+            ProductStore.deleteProduct(productId);
+            catalogProducts.clear();
+            catalogProducts.addAll(ProductStore.getAllProducts());
             refreshAdminCatalogTable();
             if (customerCatalogTableModel != null) {
                 applyCatalogFilters();
@@ -1447,6 +1554,7 @@ public class DashboardFrame extends JFrame {
         );
 
         if (newStatus != null && !newStatus.equalsIgnoreCase(current)) {
+            OrderStore.updateStatus(selected.getOrderId(), newStatus);
             selected.setOrderStatus(newStatus);
             refreshAdminOrdersTable();
             if (ordersTableModel != null) {
@@ -1711,18 +1819,11 @@ public class DashboardFrame extends JFrame {
         panel.setBackground(Color.WHITE);
         panel.setBorder(new EmptyBorder(30, 30, 30, 30));
 
-        panel.add(createKpiCard("Total Orders", String.valueOf(customerOrders.size()), new Color(37, 99, 235)));
+        panel.add(createKpiCard("Total Orders", String.valueOf(OrderStore.countAll()), new Color(37, 99, 235)));
+        panel.add(createKpiCard("Total Sales Revenue", String.format("$%.2f", OrderStore.calculateTotalRevenue()), new Color(16, 185, 129)));
+        panel.add(createKpiCard("Active Products", String.valueOf(ProductStore.countAll()), new Color(139, 92, 246)));
 
-        double revenue = 0.0;
-        for (Order o : customerOrders) {
-            if (!"CANCELLED".equalsIgnoreCase(o.getOrderStatus())) {
-                revenue += o.getTotalAmount();
-            }
-        }
-        panel.add(createKpiCard("Total Sales Revenue", String.format("$%.2f", revenue), new Color(16, 185, 129)));
-        panel.add(createKpiCard("Active Products", String.valueOf(catalogProducts.size()), new Color(139, 92, 246)));
-
-        long lowStockCount = catalogProducts.stream().filter(Product::isLowStock).count();
+        long lowStockCount = ProductStore.getLowStockProducts().size();
         panel.add(createKpiCard("Low Stock Alerts", lowStockCount + " Products", new Color(239, 68, 68)));
         return panel;
     }
@@ -1756,42 +1857,5 @@ public class DashboardFrame extends JFrame {
                 login.setVisible(true);
             });
         }
-    }
-
-    // --- Helper to build initial sample products ---
-    private List<Product> initializeSampleProducts() {
-        List<Product> products = new ArrayList<>();
-        products.add(new Product(101, 1, "Electronics", "Wireless Bluetooth Headphones", "Noise-cancelling over-ear wireless headphones with deep bass", 59.99, 25));
-        products.add(new Product(102, 1, "Electronics", "Mechanical Gaming Keyboard", "RGB backlit blue switches with mechanical tactile feedback", 79.99, 14));
-        products.add(new Product(103, 2, "Clothing", "Classic Cotton T-Shirt", "100% organic combed cotton everyday unisex wear", 19.99, 5));
-        products.add(new Product(104, 3, "Books", "Java Programming: OOP Essentials", "Comprehensive guide to OOP, Collections, and Design Patterns in Java", 39.99, 30));
-        products.add(new Product(105, 4, "Home", "Stainless Steel Water Bottle", "Vacuum insulated 750ml double-walled thermal flask", 14.99, 40));
-        products.add(new Product(106, 1, "Electronics", "USB-C Fast Charging Hub", "6-in-1 multi-port adapter with 4K HDMI and 65W Power Delivery", 29.99, 18));
-        return products;
-    }
-
-    // --- Helper to build initial sample orders ---
-    private List<Order> initializeSampleOrders() {
-        List<Order> orders = new ArrayList<>();
-
-        Order o1 = new Order(1, "ORD-2026-001", 1, 79.98, "DELIVERED", "COD", "124 Tech Park Road, Bengaluru", "2026-10-15");
-        o1.addItem(new OrderItem(1, 1, 103, "Classic Cotton T-Shirt", 2, 19.99));
-        o1.addItem(new OrderItem(2, 1, 104, "Java Programming: OOP Essentials", 1, 39.99));
-        orders.add(o1);
-
-        Order o2 = new Order(2, "ORD-2026-002", 1, 59.99, "SHIPPED", "PREPAID", "124 Tech Park Road, Bengaluru", "2026-10-18");
-        o2.addItem(new OrderItem(3, 2, 101, "Wireless Bluetooth Headphones", 1, 59.99));
-        orders.add(o2);
-
-        Order o3 = new Order(3, "ORD-2026-003", 1, 94.98, "PENDING", "COD", "124 Tech Park Road, Bengaluru", "2026-10-20");
-        o3.addItem(new OrderItem(4, 3, 102, "Mechanical Gaming Keyboard", 1, 79.99));
-        o3.addItem(new OrderItem(5, 3, 105, "Stainless Steel Water Bottle", 1, 14.99));
-        orders.add(o3);
-
-        Order o4 = new Order(4, "ORD-2026-004", 1, 14.99, "CANCELLED", "COD", "124 Tech Park Road, Bengaluru", "2026-10-12");
-        o4.addItem(new OrderItem(6, 4, 105, "Stainless Steel Water Bottle", 1, 14.99));
-        orders.add(o4);
-
-        return orders;
     }
 }

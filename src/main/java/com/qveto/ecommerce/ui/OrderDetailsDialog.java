@@ -2,12 +2,16 @@ package com.qveto.ecommerce.ui;
 
 import com.qveto.ecommerce.model.Order;
 import com.qveto.ecommerce.model.OrderItem;
+import com.qveto.ecommerce.util.ValidationUtil;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 
 /**
  * Modal dialog displaying detailed order breakdown, items, pricing, and invoice summary.
@@ -21,7 +25,7 @@ public class OrderDetailsDialog extends JDialog {
     }
 
     private void initComponents(Order order, String customerAddress) {
-        setSize(560, 520);
+        setSize(580, 530);
         setLocationRelativeTo(getOwner());
         setLayout(new BorderLayout());
 
@@ -110,7 +114,7 @@ public class OrderDetailsDialog extends JDialog {
         table.getColumnModel().getColumn(3).setCellRenderer(rightRenderer);
 
         JScrollPane scrollPane = new JScrollPane(table);
-        scrollPane.setPreferredSize(new Dimension(500, 120));
+        scrollPane.setPreferredSize(new Dimension(520, 120));
         scrollPane.setAlignmentX(Component.LEFT_ALIGNMENT);
         contentPanel.add(scrollPane);
         contentPanel.add(Box.createVerticalStrut(14));
@@ -129,9 +133,17 @@ public class OrderDetailsDialog extends JDialog {
         rootPanel.add(contentPanel, BorderLayout.CENTER);
 
         // Bottom Actions
-        JPanel actionPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 15, 12));
+        JPanel actionPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 12));
         actionPanel.setBackground(new Color(248, 250, 252));
         actionPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(226, 232, 240)));
+
+        JButton exportBtn = new JButton("Export Invoice (.txt)");
+        exportBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        exportBtn.setBackground(new Color(37, 99, 235));
+        exportBtn.setForeground(Color.WHITE);
+        exportBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        exportBtn.addActionListener(e -> handleExportInvoice(order, customerAddress));
+        actionPanel.add(exportBtn);
 
         JButton closeBtn = new JButton("Close");
         closeBtn.setFont(new Font("Segoe UI", Font.PLAIN, 12));
@@ -146,5 +158,49 @@ public class OrderDetailsDialog extends JDialog {
         JLabel label = new JLabel("<html><b>" + key + "</b> " + value + "</html>");
         label.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         return label;
+    }
+
+    private void handleExportInvoice(Order order, String customerAddress) {
+        String fileName = "Invoice_" + order.getOrderNumber() + ".txt";
+        File file = new File(fileName);
+
+        try (FileWriter writer = new FileWriter(file)) {
+            writer.write("==============================================================\n");
+            writer.write("                   QVETO E-COMMERCE STORE\n");
+            writer.write("                  Official Customer Invoice\n");
+            writer.write("==============================================================\n");
+            writer.write(String.format("Invoice Ref:     INV-%d\n", order.getOrderId()));
+            writer.write(String.format("Order Number:    %s\n", order.getOrderNumber()));
+            writer.write(String.format("Order Date:      %s\n", order.getOrderDate()));
+            writer.write(String.format("Order Status:    %s\n", order.getOrderStatus()));
+            writer.write(String.format("Payment Method:  %s\n", order.getPaymentMethod()));
+            writer.write(String.format("Shipping Address: %s\n", customerAddress));
+            writer.write("--------------------------------------------------------------\n");
+            writer.write(String.format("%-30s %-6s %-12s %-10s\n", "Item Description", "Qty", "Unit Price", "Subtotal"));
+            writer.write("--------------------------------------------------------------\n");
+
+            if (order.getItems() != null && !order.getItems().isEmpty()) {
+                for (OrderItem item : order.getItems()) {
+                    writer.write(String.format("%-30s %-6d $%-11.2f $%-9.2f\n",
+                            item.getProductName(), item.getQuantity(), item.getUnitPrice(), item.getSubtotal()));
+                }
+            } else {
+                writer.write(String.format("%-30s %-6d $%-11.2f $%-9.2f\n",
+                        "Standard E-Commerce Items Package", 1, order.getTotalAmount(), order.getTotalAmount()));
+            }
+
+            writer.write("--------------------------------------------------------------\n");
+            writer.write(String.format("GRAND TOTAL: $%.2f\n", order.getTotalAmount()));
+            writer.write("==============================================================\n");
+            writer.write("Thank you for shopping with Qveto Store!\n");
+
+            ValidationUtil.showSuccess(this,
+                    "Invoice successfully exported to: <b>" + file.getAbsolutePath() + "</b>",
+                    "Invoice Exported");
+        } catch (IOException ex) {
+            ValidationUtil.showError(this,
+                    "Failed to export invoice: " + ex.getMessage(),
+                    "Export Error");
+        }
     }
 }
