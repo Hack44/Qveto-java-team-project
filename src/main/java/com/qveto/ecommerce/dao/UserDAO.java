@@ -2,6 +2,7 @@ package com.qveto.ecommerce.dao;
 
 import com.qveto.ecommerce.DBConnection;
 import com.qveto.ecommerce.model.User;
+import com.qveto.ecommerce.util.PasswordUtil;
 
 import java.sql.*;
 import java.util.ArrayList;
@@ -11,7 +12,8 @@ import java.util.List;
  * Data Access Object for the 'users' table.
  *
  * Provides CRUD operations and authentication support for User entities.
- * All queries use PreparedStatements to prevent SQL injection.
+ * All queries use PreparedStatements to prevent SQL injection and support
+ * SHA-256 password hashing matching MySQL's SHA2(password, 256) function.
  *
  * Member 1 — DB/JDBC layer.
  */
@@ -22,24 +24,24 @@ public class UserDAO {
     // ---------------------------------------------------------------
 
     /**
-     * Authenticates a user by email and plain-text password.
-     * NOTE: In production this should compare a salted hash (e.g. BCrypt).
-     *       For this internship project we store the raw password in the
-     *       password_hash column and compare directly.
+     * Authenticates a user by email and password.
+     * Supports both SHA-256 hashed passwords and legacy plain-text fallback.
      *
      * @param email    the user's email address
      * @param password the plain-text password entered at login
      * @return the matching {@link User}, or {@code null} if not found / wrong password
      */
     public User authenticate(String email, String password) {
+        String hashed = PasswordUtil.hash(password);
         String sql = "SELECT user_id, full_name, email, role, phone, address, created_at "
-                   + "FROM users WHERE email = ? AND password_hash = ?";
+                   + "FROM users WHERE email = ? AND (password_hash = ? OR password_hash = ?)";
 
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
             stmt.setString(1, email);
             stmt.setString(2, password);
+            stmt.setString(3, hashed != null ? hashed : password);
 
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
@@ -57,17 +59,18 @@ public class UserDAO {
     // ---------------------------------------------------------------
 
     /**
-     * Inserts a new user (customer registration) into the database.
+     * Inserts a new user (customer registration) into the database with SHA-256 hashing.
      *
      * @param fullName the customer's full name
      * @param email    unique email address used as login credential
-     * @param password plain-text password (stored as-is for this project)
+     * @param password plain-text password (hashed with SHA-256 prior to storage)
      * @param phone    contact phone number (may be null)
      * @param address  shipping address (may be null)
      * @return the auto-generated user_id, or -1 if insertion failed
      */
     public int registerCustomer(String fullName, String email, String password,
                                  String phone, String address) {
+        String hashedPassword = PasswordUtil.hash(password);
         String sql = "INSERT INTO users (full_name, email, password_hash, role, phone, address) "
                    + "VALUES (?, ?, ?, 'CUSTOMER', ?, ?)";
 
@@ -76,7 +79,7 @@ public class UserDAO {
 
             stmt.setString(1, fullName);
             stmt.setString(2, email);
-            stmt.setString(3, password);
+            stmt.setString(3, hashedPassword != null ? hashedPassword : password);
             stmt.setString(4, phone);
             stmt.setString(5, address);
 
@@ -203,10 +206,10 @@ public class UserDAO {
     /**
      * Updates a customer's contact information (full name, phone, address).
      *
-     * @param userId  the user to update
+     * @param userId   the user to update
      * @param fullName new full name
-     * @param phone   new phone number
-     * @param address new shipping address
+     * @param phone    new phone number
+     * @param address  new shipping address
      * @return {@code true} if the update was successful
      */
     public boolean updateContactInfo(int userId, String fullName, String phone, String address) {
@@ -229,6 +232,7 @@ public class UserDAO {
 
     /**
      * Changes a user's password. Verifies the current password before updating.
+     * Stores the new password hashed with SHA-256.
      *
      * @param userId          the user whose password to change
      * @param currentPassword the current plain-text password (for verification)
@@ -237,14 +241,15 @@ public class UserDAO {
      *         {@code false} if current password didn't match or update failed
      */
     public boolean changePassword(int userId, String currentPassword, String newPassword) {
-        // First verify the existing password
-        String verifySql = "SELECT 1 FROM users WHERE user_id = ? AND password_hash = ?";
+        String hashedCurrent = PasswordUtil.hash(currentPassword);
+        String verifySql = "SELECT 1 FROM users WHERE user_id = ? AND (password_hash = ? OR password_hash = ?)";
 
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement verifyStmt = conn.prepareStatement(verifySql)) {
 
             verifyStmt.setInt(1, userId);
             verifyStmt.setString(2, currentPassword);
+            verifyStmt.setString(3, hashedCurrent != null ? hashedCurrent : currentPassword);
 
             try (ResultSet rs = verifyStmt.executeQuery()) {
                 if (!rs.next()) {
@@ -252,10 +257,11 @@ public class UserDAO {
                 }
             }
 
-            // Current password matched — update to new password
+            // Current password matched — update to new hashed password
+            String hashedNew = PasswordUtil.hash(newPassword);
             String updateSql = "UPDATE users SET password_hash = ? WHERE user_id = ?";
             try (PreparedStatement updateStmt = conn.prepareStatement(updateSql)) {
-                updateStmt.setString(1, newPassword);
+                updateStmt.setString(1, hashedNew != null ? hashedNew : newPassword);
                 updateStmt.setInt(2, userId);
                 return updateStmt.executeUpdate() > 0;
             }
@@ -272,8 +278,6 @@ public class UserDAO {
 
     /**
      * Deletes a user account by user_id (admin operation).
-     * Associated orders and cart items must be removed first due to FK constraints,
-     * or cascade delete must be configured in the schema.
      *
      * @param userId the user to delete
      * @return {@code true} if deletion was successful

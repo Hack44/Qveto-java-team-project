@@ -9,8 +9,20 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
 
 ### Team Roles & Modular Architecture
 
-* **Member 1:** Database Schema, JDBC Connectivity, Model/Entities, DAO Layer & Migrations (`database/schema.sql`, `DBConnection.java`, `UserDAO.java`, `ProductDAO.java`, `OrderDAO.java`, `Category.java`)
-* **Member 2 (Current Module):** UI, Login & User Management
+* **Member 1 (Database & Persistence Layer):**
+  * Canonical MySQL Relational Schema (`database/schema.sql`) covering 7 core tables with foreign keys and check constraints
+  * Database Migration v2 (`database/migration_v2.sql`) with performance indexes (`idx_products_category`, `idx_orders_status`, etc.) and `updated_at` audit triggers
+  * Synthetic Seed Data (`database/seed.sql`) containing demo admin, customers, catalog items, and sample transaction orders
+  * Singleton JDBC Connection Factory (`DBConnection.java`) with automated properties loading and resilient fallback
+  * Model Entity Layer: `User`, `Product`, `Category`, `Order`, `OrderItem`, and `CartItem` with `BigDecimal` financial precision
+  * Data Access Object (DAO) Persistence Suite:
+    * `UserDAO`: Authentication with SHA-256 password hashing (`PasswordUtil`), registration, contact updates, and password changes
+    * `ProductDAO`: Catalog CRUD, keyword search, category filtering, stock adjustments, and low-stock queries
+    * `OrderDAO`: Atomic transactional checkout (order header + line items in a single commit), status transitions, and history
+    * `CartDAO`: Full cart persistence (`cart_items` table) with upsert, quantity management, item removal, and total value calculation
+    * `ReportDAO`: Core Qveto KPI reporting metrics (sales revenue, order status distribution, top-selling products, category breakdown)
+  * Utility & Security: `PasswordUtil` providing SHA-256 hashing compatible with MySQL `SHA2()`
+* **Member 2 (UI, Presentation & Store Management):**
   * Java Swing Authentication Frames (`LoginFrame`) with password visibility toggle (Show/Hide)
   * Customer & Admin Login workflows with input validation and JDBC `UserDAO` authentication
   * Customer Registration with form validation, email uniqueness checks, and database persistence

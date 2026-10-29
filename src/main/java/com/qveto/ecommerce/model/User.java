@@ -6,6 +6,8 @@ import java.time.format.DateTimeFormatter;
 /**
  * Model entity representing a user in the system (Customer or Admin).
  * Maps to the 'users' table in the database schema.
+ *
+ * Member 1 — DB/Model layer.
  */
 public class User {
     private int userId;
@@ -23,9 +25,9 @@ public class User {
         this.userId = userId;
         this.fullName = fullName;
         this.email = email;
-        this.role = role.toUpperCase();
-        this.phone = "+91 98765 43210";
-        this.address = "124 Tech Park Road, Bengaluru, Karnataka, India";
+        this.role = role != null ? role.toUpperCase() : "CUSTOMER";
+        this.phone = "";
+        this.address = "";
         this.createdAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
     }
 
@@ -33,10 +35,10 @@ public class User {
         this.userId = userId;
         this.fullName = fullName;
         this.email = email;
-        this.role = role.toUpperCase();
-        this.phone = phone;
-        this.address = address;
-        this.createdAt = createdAt;
+        this.role = role != null ? role.toUpperCase() : "CUSTOMER";
+        this.phone = phone != null ? phone : "";
+        this.address = address != null ? address : "";
+        this.createdAt = createdAt != null ? createdAt : LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
     }
 
     public int getUserId() {
@@ -68,7 +70,7 @@ public class User {
     }
 
     public void setRole(String role) {
-        this.role = role.toUpperCase();
+        this.role = role != null ? role.toUpperCase() : "CUSTOMER";
     }
 
     public boolean isAdmin() {

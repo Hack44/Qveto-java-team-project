@@ -29,3 +29,8 @@ replay_pid*
 
 # Root-level draft schema (superseded by database/schema.sql)
 /schema.sql
+
+# IDE / Eclipse project metadata
+.classpath
+.project
+.settings/
