@@ -17,6 +17,7 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
   * Model Entity Layer: `User`, `Product`, `Category`, `Order`, `OrderItem`, and `CartItem` with `BigDecimal` financial precision
   * Data Access Object (DAO) Persistence Suite:
     * `UserDAO`: Authentication with SHA-256 password hashing (`PasswordUtil`), registration, contact updates, and password changes
+    * `CategoryDAO`: Dedicated category lifecycle management (full CRUD, product count aggregations, duplicate name checks, and FK safe-delete protection)
     * `ProductDAO`: Catalog CRUD, keyword search, category filtering, stock adjustments, and low-stock queries
     * `OrderDAO`: Atomic transactional checkout (order header + line items in a single commit), status transitions, and history
     * `CartDAO`: Full cart persistence (`cart_items` table) with upsert, quantity management, item removal, and total value calculation
