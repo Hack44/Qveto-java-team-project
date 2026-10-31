@@ -13,7 +13,7 @@ import java.util.List;
  *
  * Handles order placement, retrieval, status updates, and loading
  * of associated line items. Uses transactions to ensure that an
- * order header and all its items are committed atomically.
+ * order header, line items, and payment record are committed atomically.
  *
  * Member 1 — DB/JDBC layer.
  */
@@ -24,21 +24,25 @@ public class OrderDAO {
     // ---------------------------------------------------------------
 
     /**
-     * Persists a complete order (header + all line items) as a single atomic transaction.
+     * Persists a complete order (header + all line items + payment record)
+     * as a single atomic transaction.
      *
      * The method:
      * 1. Inserts the order header into 'orders' and retrieves the generated order_id.
      * 2. Inserts each {@link OrderItem} into 'order_items' with the new order_id.
-     * 3. Rolls back the entire transaction if any step fails.
+     * 3. Inserts an initial transaction record into 'payments'.
+     * 4. Rolls back the entire transaction if any step fails.
      *
      * @param order the {@link Order} to save; its {@code items} list must not be empty
      * @return the auto-generated order_id, or -1 if the transaction failed
      */
     public int placeOrder(Order order) {
-        String orderSql  = "INSERT INTO orders (user_id, total_amount, order_status, "
-                         + "payment_method, shipping_address) VALUES (?, ?, ?, ?, ?)";
-        String itemSql   = "INSERT INTO order_items (order_id, product_id, quantity, unit_price) "
-                         + "VALUES (?, ?, ?, ?)";
+        String orderSql   = "INSERT INTO orders (user_id, total_amount, order_status, "
+                          + "payment_method, shipping_address) VALUES (?, ?, ?, ?, ?)";
+        String itemSql    = "INSERT INTO order_items (order_id, product_id, quantity, unit_price) "
+                          + "VALUES (?, ?, ?, ?)";
+        String paymentSql = "INSERT INTO payments (order_id, payment_method, payment_status, amount) "
+                          + "VALUES (?, ?, ?, ?)";
 
         Connection conn = null;
         try {
@@ -82,7 +86,20 @@ public class OrderDAO {
                 itemStmt.executeBatch();
             }
 
-            conn.commit(); // everything succeeded
+            // 3. Record transactional payment entry
+            try (PreparedStatement payStmt = conn.prepareStatement(paymentSql)) {
+                String method = (order.getPaymentMethod() != null && !order.getPaymentMethod().trim().isEmpty())
+                              ? order.getPaymentMethod().toUpperCase() : "COD";
+                String initialPaymentStatus = "COD".equalsIgnoreCase(method) ? "PENDING" : "COMPLETED";
+
+                payStmt.setInt(1, newOrderId);
+                payStmt.setString(2, method);
+                payStmt.setString(3, initialPaymentStatus);
+                payStmt.setDouble(4, order.getTotalAmount());
+                payStmt.executeUpdate();
+            }
+
+            conn.commit(); // everything committed atomically
             return newOrderId;
 
         } catch (SQLException e) {
@@ -266,8 +283,7 @@ public class OrderDAO {
     // ---------------------------------------------------------------
 
     /**
-     * Updates the status of an existing order.
-     * Valid transitions are enforced at the service/UI layer, not here.
+     * Updates the status of an existing order and keeps associated payment status synchronized.
      *
      * @param orderId   the order to update
      * @param newStatus the new order_status string (must match the DB ENUM values)
@@ -281,7 +297,17 @@ public class OrderDAO {
 
             stmt.setString(1, newStatus.toUpperCase());
             stmt.setInt(2, orderId);
-            return stmt.executeUpdate() > 0;
+            boolean updated = stmt.executeUpdate() > 0;
+
+            if (updated) {
+                // Synchronize payment status with order status transitions
+                if ("DELIVERED".equalsIgnoreCase(newStatus)) {
+                    new PaymentDAO().updateStatusByOrderId(orderId, "COMPLETED");
+                } else if ("CANCELLED".equalsIgnoreCase(newStatus)) {
+                    new PaymentDAO().updateStatusByOrderId(orderId, "REFUNDED");
+                }
+            }
+            return updated;
         } catch (SQLException e) {
             System.err.println("[OrderDAO] updateStatus() failed: " + e.getMessage());
         }

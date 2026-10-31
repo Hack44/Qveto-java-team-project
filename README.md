@@ -14,12 +14,13 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
   * Database Migration v2 (`database/migration_v2.sql`) with performance indexes (`idx_products_category`, `idx_orders_status`, etc.) and `updated_at` audit triggers
   * Synthetic Seed Data (`database/seed.sql`) containing demo admin, customers, catalog items, and sample transaction orders
   * Singleton JDBC Connection Factory (`DBConnection.java`) with automated properties loading and resilient fallback
-  * Model Entity Layer: `User`, `Product`, `Category`, `Order`, `OrderItem`, and `CartItem` with `BigDecimal` financial precision
+  * Model Entity Layer: `User`, `Product`, `Category`, `Order`, `OrderItem`, `CartItem`, and `Payment` with `BigDecimal` financial precision
   * Data Access Object (DAO) Persistence Suite:
     * `UserDAO`: Authentication with SHA-256 password hashing (`PasswordUtil`), registration, contact updates, and password changes
     * `CategoryDAO`: Dedicated category lifecycle management (full CRUD, product count aggregations, duplicate name checks, and FK safe-delete protection)
     * `ProductDAO`: Catalog CRUD, keyword search, category filtering, stock adjustments, and low-stock queries
-    * `OrderDAO`: Atomic transactional checkout (order header + line items in a single commit), status transitions, and history
+    * `OrderDAO`: Atomic transactional checkout (order header + line items + payment record in a single commit), status transitions, and history
+    * `PaymentDAO`: Order payment persistence, test-mode simulated payment gateway integration, transaction status tracking (`PENDING`, `COMPLETED`, `REFUNDED`), and revenue audit
     * `CartDAO`: Full cart persistence (`cart_items` table) with upsert, quantity management, item removal, and total value calculation
     * `ReportDAO`: Core Qveto KPI reporting metrics (sales revenue, order status distribution, top-selling products, category breakdown)
   * Utility & Security: `PasswordUtil` providing SHA-256 hashing compatible with MySQL `SHA2()`
@@ -34,19 +35,14 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
   * Customer Profile Management (View, Edit Contact Info, Change Password Dialogs synced with MySQL)
   * Customer Order History Screen with Status Filtering & Order Cancellation
   * Order Details & Invoice Modal with Text Receipt Export (`OrderDetailsDialog`)
-  * Admin Product Management: Add new product with dynamic category selection, Edit & Restock inventory dialog (`EditProductDialog`) with quick restock actions, and product deletion
-  * Admin Category Management Modal (`CategoryManagementDialog` & `CategoryStore`): View active categories with real-time product count aggregations, add new categories, rename existing categories, and safe deletion with product dependency protection
-  * Admin Executive Analytics & Sales KPI Dashboard (`createAdminReportsPanel` & `ReportStore`):
-    * Real-time executive KPI metrics (Gross Revenue, Total Orders, Active Customers, Low-Stock Exposure)
-    * Top-Selling Products Velocity Leaderboard (`JTable` with ranking, units sold, and revenue)
-    * Order Lifecycle Status Distribution (`PENDING`, `CONFIRMED`, `SHIPPED`, `DELIVERED`, `CANCELLED` with volume and % share)
-    * Category Revenue Contribution Breakdown with financial contribution percentages
-    * One-click Executive Business Report export to text file (`qveto_executive_report.txt`)
+  * Admin Product Management: Add new product with validation, Edit & Restock inventory dialog (`EditProductDialog`) with quick restock actions, and product deletion
   * Admin Low Stock Alerts: Real-time low-stock filtering and colored inventory warning badges (`[LOW STOCK]`, `[OUT OF STOCK]`)
   * Admin Order Fulfillment Management: Inspect order details, filter by status, and advance order status (`PENDING` -> `CONFIRMED` -> `SHIPPED` -> `DELIVERED`)
   * Admin User Management (`createAdminUsersPanel`): Live user directory, real-time KPI metrics, search by name/email, role filtering, User Dossier Modal (`UserDetailsDialog`), and account deactivation with self-deletion protection
+  * Admin Category Management (`CategoryManagementDialog` & `CategoryStore`): Interactive category manager dialog allowing adding categories, renaming, deleting with product safety check, and reviewing product counts
+  * Executive Analytics Dashboard (`ReportStore` & `ReportDAO`): Live sales revenue, order fulfillment pipeline cards, category revenue breakdown, and top-selling products leaderboard
   * Real-Time Database Status Indicator (`DBStatusUtil`): Visual connectivity pill (`● MySQL Active` vs `○ Standalone Demo`) across login and dashboard headers
-  * Centralized Store Architecture (`UserStore`, `ProductStore`, `OrderStore`, `CategoryStore`, `ReportStore`, `CartStore`) coordinating between JDBC DAOs (`UserDAO`, `ProductDAO`, `OrderDAO`, `CategoryDAO`, `ReportDAO`, `CartDAO`) and resilient in-memory fallback state
+  * Centralized Store Architecture (`UserStore`, `ProductStore`, `OrderStore`, `CategoryStore`, `CartStore`, `ReportStore`) coordinating between JDBC DAOs and resilient in-memory fallback state
   * Centralized Form Validation Utility (`ValidationUtil`)
 * **Member 3:** Catalog, Cart & Order Placement Services
 * **Member 4:** Inventory Consistency, Invoices & Sales Reporting
@@ -92,6 +88,6 @@ java -cp bin com.qveto.ecommerce.Main
 | Role | Username / Email | Password | Features Accessible |
 | :--- | :--- | :--- | :--- |
 | **Customer** | `customer@qveto.com` | `pass123` | Product catalog with live search/filter, product details modal, cart, checkout with live inventory deduction, order history, invoice text export, cancel orders with stock replenishment, edit profile, change password |
-| **Admin** | `admin` | `admin123` | Inventory catalog management (add, edit, restock, delete products, low-stock filter), customer order fulfillment management (update status, view invoices), user account management (view all users, search/filter, view dossier, deactivate accounts), sales KPI overview |
+| **Admin** | `admin` | `admin123` | Inventory catalog management (add, edit, restock, delete products, low-stock filter), category management dialog, executive analytics dashboard, customer order fulfillment management (update status, view invoices), user account management (view all users, search/filter, view dossier, deactivate accounts), sales KPI overview |
 
 *(You can also use the **Register** tab to create a new customer account with full input validation and duplicate-email detection).*
