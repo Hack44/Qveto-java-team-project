@@ -1,12 +1,16 @@
 package com.qveto.ecommerce.ui;
 
+import com.qveto.ecommerce.dao.ReportDAO.ProductSalesStat;
 import com.qveto.ecommerce.model.Order;
 import com.qveto.ecommerce.model.OrderItem;
 import com.qveto.ecommerce.model.Product;
 import com.qveto.ecommerce.model.User;
+import com.qveto.ecommerce.util.CartStore;
+import com.qveto.ecommerce.util.CategoryStore;
 import com.qveto.ecommerce.util.DBStatusUtil;
 import com.qveto.ecommerce.util.OrderStore;
 import com.qveto.ecommerce.util.ProductStore;
+import com.qveto.ecommerce.util.ReportStore;
 import com.qveto.ecommerce.util.UserStore;
 import com.qveto.ecommerce.util.ValidationUtil;
 
@@ -15,9 +19,12 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
+import java.io.File;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Main Application Dashboard & Navigation Shell.
@@ -31,6 +38,9 @@ import java.util.List;
  * - Admin Product management (Add, edit & restock inventory, delete, low stock alerts)
  * - Admin Order Management (View all orders, inspect invoices, and update order statuses)
  * - Admin User Management (Discover, search, filter, inspect dossier, and deactivate accounts)
+ * - Executive Sales & KPIs Dashboard: Real-time revenue metrics, product velocity leaderboard, order lifecycle distribution, and category revenue breakdown
+ * - Category Management: Interactive category management dialog with product dependency validation
+ * - Cart Persistence: Seamless synchronization between CartDAO and session carts
  * - Real-time Database Connectivity Indicator (MySQL vs Standalone Demo Mode)
  */
 public class DashboardFrame extends JFrame {
@@ -66,6 +76,15 @@ public class DashboardFrame extends JFrame {
     private JComboBox<String> adminUserRoleFilterCombo;
     private JPanel adminUsersKpiPanel;
 
+    // Admin Reports & Analytics UI components
+    private JLabel kpiTotalOrdersVal;
+    private JLabel kpiTotalRevenueVal;
+    private JLabel kpiTotalCustomersVal;
+    private JLabel kpiLowStockVal;
+    private DefaultTableModel topSellingTableModel;
+    private DefaultTableModel orderStatusDistTableModel;
+    private DefaultTableModel categoryRevenueTableModel;
+
     // Cart UI components
     private JPanel cartRootPanel;
     private DefaultTableModel cartTableModel;
@@ -88,8 +107,9 @@ public class DashboardFrame extends JFrame {
         this.currentUser = user;
         this.catalogProducts = new ArrayList<>(ProductStore.getAllProducts());
         this.customerOrders = new ArrayList<>(currentUser.isAdmin() ? OrderStore.getAllOrders() : OrderStore.getOrdersByUser(currentUser.getUserId()));
-        this.shoppingCart = new ArrayList<>();
+        this.shoppingCart = new ArrayList<>(currentUser.isAdmin() ? Collections.emptyList() : CartStore.getCart(currentUser.getUserId()));
         initComponents();
+        updateCartBadge();
     }
 
     // Overload for backwards compatibility
@@ -151,9 +171,14 @@ public class DashboardFrame extends JFrame {
             tabbedPane.addTab("Customer Orders", createAdminOrdersPanel());
             tabbedPane.addTab("User Management", createAdminUsersPanel());
             tabbedPane.addTab("Reports & KPIs", createAdminReportsPanel());
+            tabbedPane.addChangeListener(e -> {
+                if (tabbedPane.getSelectedIndex() == 3) {
+                    refreshAdminReportsPanel();
+                }
+            });
         } else {
             tabbedPane.addTab("Browse Products", createCustomerCatalogPanel());
-            tabbedPane.addTab("My Cart (0)", createCustomerCartPanel());
+            tabbedPane.addTab("My Cart (" + getCartItemCount() + ")", createCustomerCartPanel());
             tabbedPane.addTab("Order History", createCustomerOrderHistoryPanel());
             tabbedPane.addTab("My Profile", createCustomerProfilePanel());
         }
@@ -181,7 +206,10 @@ public class DashboardFrame extends JFrame {
         searchBar.add(customerSearchField);
 
         searchBar.add(new JLabel("Category:"));
-        customerCategoryCombo = new JComboBox<>(new String[]{"All Categories", "Electronics", "Clothing", "Books", "Home"});
+        List<String> catOptions = new ArrayList<>();
+        catOptions.add("All Categories");
+        catOptions.addAll(CategoryStore.getCategoryNames());
+        customerCategoryCombo = new JComboBox<>(catOptions.toArray(new String[0]));
         customerCategoryCombo.addActionListener(e -> applyCatalogFilters());
         searchBar.add(customerCategoryCombo);
 
@@ -461,20 +489,9 @@ public class DashboardFrame extends JFrame {
     }
 
     private void addProductToCart(int productId, String productName, double price) {
-        for (OrderItem item : shoppingCart) {
-            if (item.getProductId() == productId) {
-                item.setQuantity(item.getQuantity() + 1);
-                updateCartBadge();
-                renderCartContent();
-                ValidationUtil.showSuccess(this,
-                        "Increased quantity for <b>" + productName + "</b> in your cart (Total: " + item.getQuantity() + ").",
-                        "Cart Updated");
-                return;
-            }
-        }
-
-        OrderItem newItem = new OrderItem(shoppingCart.size() + 1, 0, productId, productName, 1, price);
-        shoppingCart.add(newItem);
+        CartStore.addItem(currentUser.getUserId(), productId, productName, price, 1);
+        shoppingCart.clear();
+        shoppingCart.addAll(CartStore.getCart(currentUser.getUserId()));
         updateCartBadge();
         renderCartContent();
 
@@ -492,11 +509,9 @@ public class DashboardFrame extends JFrame {
 
         OrderItem item = shoppingCart.get(selected);
         int newQty = item.getQuantity() + delta;
-        if (newQty <= 0) {
-            shoppingCart.remove(selected);
-        } else {
-            item.setQuantity(newQty);
-        }
+        CartStore.updateQuantity(currentUser.getUserId(), item.getProductId(), newQty);
+        shoppingCart.clear();
+        shoppingCart.addAll(CartStore.getCart(currentUser.getUserId()));
 
         updateCartBadge();
         renderCartContent();
@@ -509,7 +524,11 @@ public class DashboardFrame extends JFrame {
             return;
         }
 
-        OrderItem item = shoppingCart.remove(selected);
+        OrderItem item = shoppingCart.get(selected);
+        CartStore.removeItem(currentUser.getUserId(), item.getProductId());
+        shoppingCart.clear();
+        shoppingCart.addAll(CartStore.getCart(currentUser.getUserId()));
+
         updateCartBadge();
         renderCartContent();
         ValidationUtil.showSuccess(this, item.getProductName() + " removed from your cart.", "Cart Updated");
@@ -518,6 +537,7 @@ public class DashboardFrame extends JFrame {
     private void clearEntireCart() {
         if (shoppingCart.isEmpty()) return;
         if (ValidationUtil.showConfirm(this, "Are you sure you want to clear all items from your cart?", "Clear Cart")) {
+            CartStore.clearCart(currentUser.getUserId());
             shoppingCart.clear();
             updateCartBadge();
             renderCartContent();
@@ -636,12 +656,14 @@ public class DashboardFrame extends JFrame {
             catalogProducts.clear();
             catalogProducts.addAll(ProductStore.getAllProducts());
 
+            CartStore.clearCart(currentUser.getUserId());
             shoppingCart.clear();
             updateCartBadge();
             renderCartContent();
             applyOrderFilters();
             refreshAdminOrdersTable();
             refreshCustomerCatalogTable(catalogProducts);
+            refreshAdminReportsPanel();
 
             dialog.dispose();
 
@@ -1159,6 +1181,20 @@ public class DashboardFrame extends JFrame {
         deleteBtn.addActionListener(e -> handleAdminDeleteProduct());
         toolBar.add(deleteBtn);
 
+        JButton manageCategoriesBtn = new JButton("Manage Categories");
+        manageCategoriesBtn.setBackground(new Color(79, 70, 229));
+        manageCategoriesBtn.setForeground(Color.WHITE);
+        manageCategoriesBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        manageCategoriesBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        manageCategoriesBtn.addActionListener(e -> {
+            CategoryManagementDialog dialog = new CategoryManagementDialog(this);
+            dialog.setVisible(true);
+            reloadCategoryDropdowns();
+            refreshAdminCatalogTable();
+            refreshAdminReportsPanel();
+        });
+        toolBar.add(manageCategoriesBtn);
+
         adminLowStockFilterCheck = new JCheckBox("Low Stock Alerts Only");
         adminLowStockFilterCheck.setBackground(Color.WHITE);
         adminLowStockFilterCheck.setFont(new Font("Segoe UI", Font.BOLD, 12));
@@ -1279,6 +1315,7 @@ public class DashboardFrame extends JFrame {
             if (customerCatalogTableModel != null) {
                 applyCatalogFilters();
             }
+            refreshAdminReportsPanel();
         });
         dialog.setVisible(true);
     }
@@ -1304,7 +1341,7 @@ public class DashboardFrame extends JFrame {
 
         gbc.gridy = 2;
         panel.add(new JLabel("Category:"), gbc);
-        JComboBox<String> categoryCombo = new JComboBox<>(new String[]{"Electronics", "Clothing", "Books", "Home", "Sports", "Other"});
+        JComboBox<String> categoryCombo = new JComboBox<>(CategoryStore.getCategoryNames().toArray(new String[0]));
         gbc.gridy = 3;
         panel.add(categoryCombo, gbc);
 
@@ -1376,6 +1413,7 @@ public class DashboardFrame extends JFrame {
             if (customerCatalogTableModel != null) {
                 applyCatalogFilters();
             }
+            refreshAdminReportsPanel();
 
             dialog.dispose();
             ValidationUtil.showSuccess(this, "Product <b>" + name + "</b> added to catalog successfully!", "Product Added");
@@ -1427,6 +1465,7 @@ public class DashboardFrame extends JFrame {
             if (customerCatalogTableModel != null) {
                 applyCatalogFilters();
             }
+            refreshAdminReportsPanel();
             ValidationUtil.showSuccess(this, "Product <b>" + name + "</b> has been removed from catalog.", "Product Deleted");
         }
     }
@@ -1815,38 +1854,310 @@ public class DashboardFrame extends JFrame {
     }
 
     private JPanel createAdminReportsPanel() {
-        JPanel panel = new JPanel(new GridLayout(2, 2, 20, 20));
-        panel.setBackground(Color.WHITE);
-        panel.setBorder(new EmptyBorder(30, 30, 30, 30));
+        JPanel root = new JPanel(new BorderLayout(15, 15));
+        root.setBackground(Color.WHITE);
+        root.setBorder(new EmptyBorder(15, 15, 15, 15));
 
-        panel.add(createKpiCard("Total Orders", String.valueOf(OrderStore.countAll()), new Color(37, 99, 235)));
-        panel.add(createKpiCard("Total Sales Revenue", String.format("$%.2f", OrderStore.calculateTotalRevenue()), new Color(16, 185, 129)));
-        panel.add(createKpiCard("Active Products", String.valueOf(ProductStore.countAll()), new Color(139, 92, 246)));
+        // Top Header & Controls Panel
+        JPanel northPanel = new JPanel(new BorderLayout(10, 10));
+        northPanel.setBackground(Color.WHITE);
 
-        long lowStockCount = ProductStore.getLowStockProducts().size();
-        panel.add(createKpiCard("Low Stock Alerts", lowStockCount + " Products", new Color(239, 68, 68)));
-        return panel;
+        // Header Title & Action Buttons
+        JPanel headerRow = new JPanel(new BorderLayout());
+        headerRow.setBackground(Color.WHITE);
+
+        JPanel titleBlock = new JPanel(new GridLayout(2, 1, 0, 2));
+        titleBlock.setBackground(Color.WHITE);
+        JLabel titleLabel = new JLabel("Executive Performance & Sales Analytics");
+        titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 17));
+        titleLabel.setForeground(new Color(15, 23, 42));
+
+        JLabel subtitleLabel = new JLabel("Real-time revenue velocity, product demand leaderboard, and operational pipeline metrics");
+        subtitleLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        subtitleLabel.setForeground(new Color(100, 116, 139));
+
+        titleBlock.add(titleLabel);
+        titleBlock.add(subtitleLabel);
+        headerRow.add(titleBlock, BorderLayout.WEST);
+
+        JPanel actionBtnRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        actionBtnRow.setBackground(Color.WHITE);
+
+        JButton refreshBtn = new JButton("↻ Refresh Analytics");
+        refreshBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        refreshBtn.setBackground(new Color(241, 245, 249));
+        refreshBtn.setForeground(new Color(30, 41, 59));
+        refreshBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        refreshBtn.addActionListener(e -> {
+            refreshAdminReportsPanel();
+            ValidationUtil.showSuccess(this, "Executive analytics metrics synchronized with latest transactions.", "Analytics Refreshed");
+        });
+
+        JButton exportBtn = new JButton("Export Executive Report (.txt)");
+        exportBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        exportBtn.setBackground(new Color(16, 185, 129));
+        exportBtn.setForeground(Color.WHITE);
+        exportBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        exportBtn.addActionListener(e -> handleExportExecutiveReport());
+
+        actionBtnRow.add(refreshBtn);
+        actionBtnRow.add(exportBtn);
+        headerRow.add(actionBtnRow, BorderLayout.EAST);
+        northPanel.add(headerRow, BorderLayout.NORTH);
+
+        // KPI Deck (4 cards)
+        JPanel kpiGrid = new JPanel(new GridLayout(1, 4, 12, 0));
+        kpiGrid.setBackground(Color.WHITE);
+        kpiGrid.setBorder(new EmptyBorder(8, 0, 4, 0));
+
+        kpiTotalRevenueVal = new JLabel("$0.00");
+        kpiTotalOrdersVal = new JLabel("0");
+        kpiTotalCustomersVal = new JLabel("0");
+        kpiLowStockVal = new JLabel("0 SKUs");
+
+        kpiGrid.add(createKpiCard("Gross Sales Revenue", kpiTotalRevenueVal, new Color(16, 185, 129)));
+        kpiGrid.add(createKpiCard("Total Orders", kpiTotalOrdersVal, new Color(37, 99, 235)));
+        kpiGrid.add(createKpiCard("Active Customers", kpiTotalCustomersVal, new Color(139, 92, 246)));
+        kpiGrid.add(createKpiCard("Low Stock Exposure", kpiLowStockVal, new Color(239, 68, 68)));
+
+        northPanel.add(kpiGrid, BorderLayout.SOUTH);
+        root.add(northPanel, BorderLayout.NORTH);
+
+        // Center Split Panel (2 Columns)
+        JPanel centerGrid = new JPanel(new GridLayout(1, 2, 15, 0));
+        centerGrid.setBackground(Color.WHITE);
+
+        // --- Left Card: Top Selling Products Leaderboard ---
+        JPanel leftCard = new JPanel(new BorderLayout(8, 8));
+        leftCard.setBackground(Color.WHITE);
+        leftCard.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(226, 232, 240), 1),
+                new EmptyBorder(12, 12, 12, 12)
+        ));
+
+        JLabel leftTitle = new JLabel("Top-Selling Products (Velocity Leaderboard)");
+        leftTitle.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        leftTitle.setForeground(new Color(30, 41, 59));
+        leftCard.add(leftTitle, BorderLayout.NORTH);
+
+        String[] topSellingCols = {"Rank", "Product Name", "Category", "Units Sold", "Revenue ($)"};
+        topSellingTableModel = new DefaultTableModel(topSellingCols, 0) {
+            @Override
+            public boolean isCellEditable(int row, int col) {
+                return false;
+            }
+        };
+
+        JTable topSellingTable = new JTable(topSellingTableModel);
+        topSellingTable.setRowHeight(26);
+        topSellingTable.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        topSellingTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 11));
+
+        DefaultTableCellRenderer centerCellRenderer = new DefaultTableCellRenderer();
+        centerCellRenderer.setHorizontalAlignment(SwingConstants.CENTER);
+        topSellingTable.getColumnModel().getColumn(0).setPreferredWidth(45);
+        topSellingTable.getColumnModel().getColumn(0).setCellRenderer(centerCellRenderer);
+        topSellingTable.getColumnModel().getColumn(3).setPreferredWidth(70);
+        topSellingTable.getColumnModel().getColumn(3).setCellRenderer(centerCellRenderer);
+
+        DefaultTableCellRenderer rightCellRenderer = new DefaultTableCellRenderer();
+        rightCellRenderer.setHorizontalAlignment(SwingConstants.RIGHT);
+        topSellingTable.getColumnModel().getColumn(4).setPreferredWidth(90);
+        topSellingTable.getColumnModel().getColumn(4).setCellRenderer(rightCellRenderer);
+        topSellingTable.getColumnModel().getColumn(1).setPreferredWidth(140);
+        topSellingTable.getColumnModel().getColumn(2).setPreferredWidth(90);
+
+        leftCard.add(new JScrollPane(topSellingTable), BorderLayout.CENTER);
+        centerGrid.add(leftCard);
+
+        // --- Right Card: Stacked Breakdown Tables ---
+        JPanel rightStack = new JPanel(new GridLayout(2, 1, 0, 12));
+        rightStack.setBackground(Color.WHITE);
+
+        // Top Sub-card: Order Lifecycle Distribution
+        JPanel orderDistCard = new JPanel(new BorderLayout(6, 6));
+        orderDistCard.setBackground(Color.WHITE);
+        orderDistCard.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(226, 232, 240), 1),
+                new EmptyBorder(10, 10, 10, 10)
+        ));
+
+        JLabel orderDistTitle = new JLabel("Order Lifecycle Distribution");
+        orderDistTitle.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        orderDistTitle.setForeground(new Color(30, 41, 59));
+        orderDistCard.add(orderDistTitle, BorderLayout.NORTH);
+
+        String[] orderDistCols = {"Status", "Orders Count", "% Share"};
+        orderStatusDistTableModel = new DefaultTableModel(orderDistCols, 0) {
+            @Override
+            public boolean isCellEditable(int row, int col) {
+                return false;
+            }
+        };
+
+        JTable orderDistTable = new JTable(orderStatusDistTableModel);
+        orderDistTable.setRowHeight(24);
+        orderDistTable.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        orderDistTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 11));
+        orderDistTable.getColumnModel().getColumn(1).setCellRenderer(centerCellRenderer);
+        orderDistTable.getColumnModel().getColumn(2).setCellRenderer(centerCellRenderer);
+
+        orderDistCard.add(new JScrollPane(orderDistTable), BorderLayout.CENTER);
+        rightStack.add(orderDistCard);
+
+        // Bottom Sub-card: Category Revenue Breakdown
+        JPanel catRevCard = new JPanel(new BorderLayout(6, 6));
+        catRevCard.setBackground(Color.WHITE);
+        catRevCard.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(226, 232, 240), 1),
+                new EmptyBorder(10, 10, 10, 10)
+        ));
+
+        JLabel catRevTitle = new JLabel("Revenue Contribution by Category");
+        catRevTitle.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        catRevTitle.setForeground(new Color(30, 41, 59));
+        catRevCard.add(catRevTitle, BorderLayout.NORTH);
+
+        String[] catRevCols = {"Category", "Revenue ($)", "% Share"};
+        categoryRevenueTableModel = new DefaultTableModel(catRevCols, 0) {
+            @Override
+            public boolean isCellEditable(int row, int col) {
+                return false;
+            }
+        };
+
+        JTable catRevTable = new JTable(categoryRevenueTableModel);
+        catRevTable.setRowHeight(24);
+        catRevTable.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        catRevTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 11));
+        catRevTable.getColumnModel().getColumn(1).setCellRenderer(rightCellRenderer);
+        catRevTable.getColumnModel().getColumn(2).setCellRenderer(centerCellRenderer);
+
+        catRevCard.add(new JScrollPane(catRevTable), BorderLayout.CENTER);
+        rightStack.add(catRevCard);
+
+        centerGrid.add(rightStack);
+        root.add(centerGrid, BorderLayout.CENTER);
+
+        // Initial population of metrics
+        refreshAdminReportsPanel();
+
+        return root;
     }
 
-    private JPanel createKpiCard(String title, String value, Color accentColor) {
+    public void refreshAdminReportsPanel() {
+        if (kpiTotalOrdersVal == null) return;
+
+        double revenue = ReportStore.getTotalRevenue();
+        int orders = ReportStore.getTotalOrders();
+        int customers = ReportStore.getTotalCustomers();
+        int lowStock = ReportStore.getLowStockExposureCount();
+
+        kpiTotalRevenueVal.setText(String.format("$%.2f", revenue));
+        kpiTotalOrdersVal.setText(String.valueOf(orders));
+        kpiTotalCustomersVal.setText(String.valueOf(customers));
+        kpiLowStockVal.setText(lowStock + " SKUs");
+
+        // Top Selling Leaderboard
+        if (topSellingTableModel != null) {
+            topSellingTableModel.setRowCount(0);
+            List<ProductSalesStat> topList = ReportStore.getTopSellingProducts(8);
+            int rank = 1;
+            for (ProductSalesStat stat : topList) {
+                topSellingTableModel.addRow(new Object[]{
+                        "#" + rank++,
+                        stat.getProductName(),
+                        stat.getCategoryName(),
+                        stat.getTotalUnitsSold(),
+                        String.format("$%.2f", stat.getTotalRevenueAsDouble())
+                });
+            }
+        }
+
+        // Status Distribution
+        if (orderStatusDistTableModel != null) {
+            orderStatusDistTableModel.setRowCount(0);
+            Map<String, Integer> statusDist = ReportStore.getOrderStatusDistribution();
+            for (Map.Entry<String, Integer> e : statusDist.entrySet()) {
+                double pct = orders > 0 ? (e.getValue() * 100.0 / orders) : 0.0;
+                orderStatusDistTableModel.addRow(new Object[]{
+                        e.getKey(),
+                        e.getValue(),
+                        String.format("%.1f%%", pct)
+                });
+            }
+        }
+
+        // Category Revenue Breakdown
+        if (categoryRevenueTableModel != null) {
+            categoryRevenueTableModel.setRowCount(0);
+            Map<String, Double> catRev = ReportStore.getRevenueByCategory();
+            for (Map.Entry<String, Double> e : catRev.entrySet()) {
+                double pct = revenue > 0 ? (e.getValue() * 100.0 / revenue) : 0.0;
+                categoryRevenueTableModel.addRow(new Object[]{
+                        e.getKey(),
+                        String.format("$%.2f", e.getValue()),
+                        String.format("%.1f%%", pct)
+                });
+            }
+        }
+    }
+
+    private void handleExportExecutiveReport() {
+        JFileChooser fileChooser = new JFileChooser();
+        fileChooser.setDialogTitle("Export Executive Performance & Sales Report");
+        fileChooser.setSelectedFile(new File("qveto_executive_report.txt"));
+        int userSelection = fileChooser.showSaveDialog(this);
+        if (userSelection == JFileChooser.APPROVE_OPTION) {
+            File fileToSave = fileChooser.getSelectedFile();
+            try {
+                ReportStore.exportExecutiveReport(fileToSave);
+                ValidationUtil.showSuccess(this,
+                        "Executive Report exported successfully to:<br/><b>" + fileToSave.getAbsolutePath() + "</b>",
+                        "Report Exported");
+            } catch (Exception ex) {
+                ValidationUtil.showError(this, "Failed to export report: " + ex.getMessage(), "Export Error");
+            }
+        }
+    }
+
+    private void reloadCategoryDropdowns() {
+        if (customerCategoryCombo != null) {
+            String selected = (String) customerCategoryCombo.getSelectedItem();
+            customerCategoryCombo.removeAllItems();
+            customerCategoryCombo.addItem("All Categories");
+            for (String c : CategoryStore.getCategoryNames()) {
+                customerCategoryCombo.addItem(c);
+            }
+            if (selected != null) {
+                customerCategoryCombo.setSelectedItem(selected);
+            }
+        }
+    }
+
+    private JPanel createKpiCard(String title, JLabel valueLabel, Color accentColor) {
         JPanel card = new JPanel(new BorderLayout());
         card.setBackground(new Color(248, 250, 252));
         card.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(new Color(226, 232, 240), 1),
-                new EmptyBorder(20, 20, 20, 20)
+                new EmptyBorder(14, 18, 14, 18)
         ));
 
         JLabel titleLabel = new JLabel(title);
-        titleLabel.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        titleLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         titleLabel.setForeground(new Color(100, 116, 139));
 
-        JLabel valueLabel = new JLabel(value);
-        valueLabel.setFont(new Font("Segoe UI", Font.BOLD, 24));
+        valueLabel.setFont(new Font("Segoe UI", Font.BOLD, 22));
         valueLabel.setForeground(accentColor);
 
         card.add(titleLabel, BorderLayout.NORTH);
         card.add(valueLabel, BorderLayout.CENTER);
         return card;
+    }
+
+    private JPanel createKpiCard(String title, String value, Color accentColor) {
+        JLabel val = new JLabel(value);
+        return createKpiCard(title, val, accentColor);
     }
 
     private void handleLogout() {

@@ -1,12 +1,14 @@
 package com.qveto.ecommerce.ui;
 
 import com.qveto.ecommerce.model.Product;
+import com.qveto.ecommerce.util.CategoryStore;
 import com.qveto.ecommerce.util.ValidationUtil;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.function.Consumer;
 
 /**
@@ -63,11 +65,10 @@ public class EditProductDialog extends JDialog {
         gbc.gridy = 1;
         formPanel.add(nameField, gbc);
 
-        // Category
-        gbc.gridy = 2;
+        // Category (Dynamically populated from CategoryStore)
         formPanel.add(new JLabel("Category:"), gbc);
-        String[] categories = {"Electronics", "Clothing", "Books", "Home", "Sports", "Other"};
-        JComboBox<String> categoryCombo = new JComboBox<>(categories);
+        List<String> categoryList = CategoryStore.getCategoryNames();
+        JComboBox<String> categoryCombo = new JComboBox<>(categoryList.toArray(new String[0]));
         categoryCombo.setSelectedItem(product.getCategory());
         gbc.gridy = 3;
         formPanel.add(categoryCombo, gbc);
