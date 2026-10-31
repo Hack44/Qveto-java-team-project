@@ -28,18 +28,25 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
   * Customer & Admin Login workflows with input validation and JDBC `UserDAO` authentication
   * Customer Registration with form validation, email uniqueness checks, and database persistence
   * Application Dashboard Shell & Navigation (`DashboardFrame`)
-  * Product Discovery: Live keyword search, category filtering, and Product Details Modal (`ProductDetailsDialog`)
-  * Interactive Shopping Cart with dynamic badge, quantity controls, and checkout confirmation
+  * Product Discovery: Live keyword search, dynamic category filtering, and Product Details Modal (`ProductDetailsDialog`)
+  * Interactive Shopping Cart with dynamic badge, quantity controls, cart persistence (`CartStore` & `CartDAO`), and checkout confirmation
   * Automated Inventory Stock Synchronization: Order checkout automatically reserves inventory (`ProductStore.adjustStock`), and order cancellations automatically replenish stock
   * Customer Profile Management (View, Edit Contact Info, Change Password Dialogs synced with MySQL)
   * Customer Order History Screen with Status Filtering & Order Cancellation
   * Order Details & Invoice Modal with Text Receipt Export (`OrderDetailsDialog`)
-  * Admin Product Management: Add new product with validation, Edit & Restock inventory dialog (`EditProductDialog`) with quick restock actions, and product deletion
+  * Admin Product Management: Add new product with dynamic category selection, Edit & Restock inventory dialog (`EditProductDialog`) with quick restock actions, and product deletion
+  * Admin Category Management Modal (`CategoryManagementDialog` & `CategoryStore`): View active categories with real-time product count aggregations, add new categories, rename existing categories, and safe deletion with product dependency protection
+  * Admin Executive Analytics & Sales KPI Dashboard (`createAdminReportsPanel` & `ReportStore`):
+    * Real-time executive KPI metrics (Gross Revenue, Total Orders, Active Customers, Low-Stock Exposure)
+    * Top-Selling Products Velocity Leaderboard (`JTable` with ranking, units sold, and revenue)
+    * Order Lifecycle Status Distribution (`PENDING`, `CONFIRMED`, `SHIPPED`, `DELIVERED`, `CANCELLED` with volume and % share)
+    * Category Revenue Contribution Breakdown with financial contribution percentages
+    * One-click Executive Business Report export to text file (`qveto_executive_report.txt`)
   * Admin Low Stock Alerts: Real-time low-stock filtering and colored inventory warning badges (`[LOW STOCK]`, `[OUT OF STOCK]`)
   * Admin Order Fulfillment Management: Inspect order details, filter by status, and advance order status (`PENDING` -> `CONFIRMED` -> `SHIPPED` -> `DELIVERED`)
   * Admin User Management (`createAdminUsersPanel`): Live user directory, real-time KPI metrics, search by name/email, role filtering, User Dossier Modal (`UserDetailsDialog`), and account deactivation with self-deletion protection
   * Real-Time Database Status Indicator (`DBStatusUtil`): Visual connectivity pill (`● MySQL Active` vs `○ Standalone Demo`) across login and dashboard headers
-  * Centralized Store Architecture (`UserStore`, `ProductStore`, `OrderStore`) coordinating between JDBC DAOs (`UserDAO`, `ProductDAO`, `OrderDAO`) and resilient in-memory fallback state
+  * Centralized Store Architecture (`UserStore`, `ProductStore`, `OrderStore`, `CategoryStore`, `ReportStore`, `CartStore`) coordinating between JDBC DAOs (`UserDAO`, `ProductDAO`, `OrderDAO`, `CategoryDAO`, `ReportDAO`, `CartDAO`) and resilient in-memory fallback state
   * Centralized Form Validation Utility (`ValidationUtil`)
 * **Member 3:** Catalog, Cart & Order Placement Services
 * **Member 4:** Inventory Consistency, Invoices & Sales Reporting
