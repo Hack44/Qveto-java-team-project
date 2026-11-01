@@ -9,11 +9,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Data Access Object for the 'orders' and 'order_items' tables.
+ * Data Access Object for the 'orders' table.
  *
- * Handles order placement, retrieval, status updates, and loading
- * of associated line items. Uses transactions to ensure that an
- * order header, line items, and payment record are committed atomically.
+ * Handles order placement, retrieval, status updates, and coordinates
+ * with {@link OrderItemDAO} and {@link PaymentDAO} to ensure atomic
+ * transactional integrity across the orders, order_items, and payments tables.
  *
  * Member 1 — DB/JDBC layer.
  */
@@ -29,7 +29,7 @@ public class OrderDAO {
      *
      * The method:
      * 1. Inserts the order header into 'orders' and retrieves the generated order_id.
-     * 2. Inserts each {@link OrderItem} into 'order_items' with the new order_id.
+     * 2. Inserts each {@link OrderItem} via {@link OrderItemDAO#insertBatch(Connection, int, List)}.
      * 3. Inserts an initial transaction record into 'payments'.
      * 4. Rolls back the entire transaction if any step fails.
      *
@@ -39,8 +39,6 @@ public class OrderDAO {
     public int placeOrder(Order order) {
         String orderSql   = "INSERT INTO orders (user_id, total_amount, order_status, "
                           + "payment_method, shipping_address) VALUES (?, ?, ?, ?, ?)";
-        String itemSql    = "INSERT INTO order_items (order_id, product_id, quantity, unit_price) "
-                          + "VALUES (?, ?, ?, ?)";
         String paymentSql = "INSERT INTO payments (order_id, payment_method, payment_status, amount) "
                           + "VALUES (?, ?, ?, ?)";
 
@@ -74,16 +72,11 @@ public class OrderDAO {
                 return -1;
             }
 
-            // 2. Insert all line items
-            try (PreparedStatement itemStmt = conn.prepareStatement(itemSql)) {
-                for (OrderItem item : order.getItems()) {
-                    itemStmt.setInt(1, newOrderId);
-                    itemStmt.setInt(2, item.getProductId());
-                    itemStmt.setInt(3, item.getQuantity());
-                    itemStmt.setDouble(4, item.getUnitPrice());
-                    itemStmt.addBatch();
-                }
-                itemStmt.executeBatch();
+            // 2. Insert all line items via OrderItemDAO within same active transaction
+            boolean itemsInserted = new OrderItemDAO().insertBatch(conn, newOrderId, order.getItems());
+            if (!itemsInserted && order.getItems() != null && !order.getItems().isEmpty()) {
+                conn.rollback();
+                return -1;
             }
 
             // 3. Record transactional payment entry
@@ -319,40 +312,13 @@ public class OrderDAO {
     // ---------------------------------------------------------------
 
     /**
-     * Loads all order_items rows for a given order_id, joined with the product name.
+     * Loads all order_items rows for a given order_id via {@link OrderItemDAO}.
      *
      * @param orderId the parent order's ID
      * @return list of {@link OrderItem} objects for that order
      */
     private List<OrderItem> findItemsByOrderId(int orderId) {
-        List<OrderItem> items = new ArrayList<>();
-        String sql = "SELECT oi.order_item_id, oi.order_id, oi.product_id, "
-                   + "p.product_name, oi.quantity, oi.unit_price "
-                   + "FROM order_items oi "
-                   + "JOIN products p ON oi.product_id = p.product_id "
-                   + "WHERE oi.order_id = ?";
-
-        try (Connection conn = DBConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-
-            stmt.setInt(1, orderId);
-
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    items.add(new OrderItem(
-                            rs.getInt("order_item_id"),
-                            rs.getInt("order_id"),
-                            rs.getInt("product_id"),
-                            rs.getString("product_name"),
-                            rs.getInt("quantity"),
-                            rs.getDouble("unit_price")
-                    ));
-                }
-            }
-        } catch (SQLException e) {
-            System.err.println("[OrderDAO] findItemsByOrderId() failed: " + e.getMessage());
-        }
-        return items;
+        return new OrderItemDAO().findByOrderId(orderId);
     }
 
     /**

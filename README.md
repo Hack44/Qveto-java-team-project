@@ -20,6 +20,7 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
     * `CategoryDAO`: Dedicated category lifecycle management (full CRUD, product count aggregations, duplicate name checks, and FK safe-delete protection)
     * `ProductDAO`: Catalog CRUD, keyword search, category filtering, stock adjustments, and low-stock queries
     * `OrderDAO`: Atomic transactional checkout (order header + line items + payment record in a single commit), status transitions, and history
+    * `OrderItemDAO`: Dedicated line item persistence, transactional batch inserts, line-level sales aggregations (units sold, item revenue), and category joined lookups
     * `PaymentDAO`: Order payment persistence, test-mode simulated payment gateway integration, transaction status tracking (`PENDING`, `COMPLETED`, `REFUNDED`), and revenue audit
     * `CartDAO`: Full cart persistence (`cart_items` table) with upsert, quantity management, item removal, and total value calculation
     * `ReportDAO`: Core Qveto KPI reporting metrics (sales revenue, order status distribution, top-selling products, category breakdown)
