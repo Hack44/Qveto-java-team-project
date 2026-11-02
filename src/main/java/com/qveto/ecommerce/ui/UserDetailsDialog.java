@@ -8,19 +8,23 @@ import java.awt.*;
 
 /**
  * Modal dialog displaying complete user account details, role information,
- * address profile, and platform activity metrics.
+ * address profile, order frequency, and Customer Lifetime Value (CLV).
  * 
- * Supports Member 2 Admin User Management requirements.
+ * Supports Member 2 (UI, Presentation & Store Management) Admin User Management requirements.
  */
 public class UserDetailsDialog extends JDialog {
 
     public UserDetailsDialog(Frame owner, User user, int orderCount) {
-        super(owner, "User Account Dossier — " + user.getFullName(), true);
-        initComponents(user, orderCount);
+        this(owner, user, orderCount, 0.0);
     }
 
-    private void initComponents(User user, int orderCount) {
-        setSize(480, 470);
+    public UserDetailsDialog(Frame owner, User user, int orderCount, double lifetimeSpend) {
+        super(owner, "User Account Dossier — " + user.getFullName(), true);
+        initComponents(user, orderCount, lifetimeSpend);
+    }
+
+    private void initComponents(User user, int orderCount, double lifetimeSpend) {
+        setSize(500, 500);
         setLocationRelativeTo(getOwner());
         setLayout(new BorderLayout());
 
@@ -65,8 +69,8 @@ public class UserDetailsDialog extends JDialog {
         bodyPanel.add(nameHeading);
         bodyPanel.add(Box.createVerticalStrut(12));
 
-        // Metadata Grid Card
-        JPanel metaGrid = new JPanel(new GridLayout(3, 2, 10, 8));
+        // Metadata Grid Card (4 rows x 2 columns)
+        JPanel metaGrid = new JPanel(new GridLayout(4, 2, 10, 8));
         metaGrid.setBackground(new Color(248, 250, 252));
         metaGrid.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(new Color(226, 232, 240)),
@@ -80,6 +84,8 @@ public class UserDetailsDialog extends JDialog {
         metaGrid.add(createFieldItem("Phone:", user.getPhone().isEmpty() ? "N/A" : user.getPhone()));
         metaGrid.add(createFieldItem("Registered On:", user.getCreatedAt().isEmpty() ? "Recent" : user.getCreatedAt()));
         metaGrid.add(createFieldItem("Total Orders:", orderCount + " order" + (orderCount == 1 ? "" : "s")));
+        metaGrid.add(createFieldItem("Lifetime Value (CLV):", String.format("$%.2f", lifetimeSpend)));
+        metaGrid.add(createFieldItem("Account Status:", "Active & Verified"));
 
         bodyPanel.add(metaGrid);
         bodyPanel.add(Box.createVerticalStrut(14));
@@ -108,49 +114,36 @@ public class UserDetailsDialog extends JDialog {
 
         bodyPanel.add(Box.createVerticalStrut(14));
 
-        // Account Status Info Pill
-        JPanel statusCard = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 4));
-        statusCard.setBackground(new Color(240, 253, 244));
-        statusCard.setBorder(BorderFactory.createLineBorder(new Color(187, 247, 208)));
-        statusCard.setAlignmentX(Component.LEFT_ALIGNMENT);
-        JLabel statusDot = new JLabel("● Account Status: Active & In Good Standing");
-        statusDot.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        statusDot.setForeground(new Color(22, 101, 52));
-        statusCard.add(statusDot);
-        bodyPanel.add(statusCard);
-
         rootPanel.add(bodyPanel, BorderLayout.CENTER);
 
-        // Footer Actions
-        JPanel footerPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 15, 12));
-        footerPanel.setBackground(new Color(248, 250, 252));
-        footerPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(226, 232, 240)));
+        // Bottom Action Bar
+        JPanel bottomBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 12));
+        bottomBar.setBackground(new Color(248, 250, 252));
+        bottomBar.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(226, 232, 240)));
 
         JButton closeBtn = new JButton("Close Dossier");
         closeBtn.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        closeBtn.setPreferredSize(new Dimension(120, 32));
         closeBtn.addActionListener(e -> dispose());
-        footerPanel.add(closeBtn);
+        bottomBar.add(closeBtn);
 
-        rootPanel.add(footerPanel, BorderLayout.SOUTH);
-
+        rootPanel.add(bottomBar, BorderLayout.SOUTH);
         setContentPane(rootPanel);
     }
 
-    private JPanel createFieldItem(String label, String value) {
-        JPanel p = new JPanel(new GridLayout(2, 1, 0, 2));
-        p.setBackground(new Color(248, 250, 252));
+    private JPanel createFieldItem(String labelText, String valueText) {
+        JPanel panel = new JPanel(new BorderLayout(4, 0));
+        panel.setOpaque(false);
 
-        JLabel lbl = new JLabel(label);
-        lbl.setFont(new Font("Segoe UI", Font.PLAIN, 11));
-        lbl.setForeground(new Color(100, 116, 139));
+        JLabel label = new JLabel(labelText);
+        label.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        label.setForeground(new Color(100, 116, 139));
 
-        JLabel val = new JLabel(value);
-        val.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        JLabel val = new JLabel(valueText);
+        val.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         val.setForeground(new Color(15, 23, 42));
 
-        p.add(lbl);
-        p.add(val);
-        return p;
+        panel.add(label, BorderLayout.WEST);
+        panel.add(val, BorderLayout.CENTER);
+        return panel;
     }
 }

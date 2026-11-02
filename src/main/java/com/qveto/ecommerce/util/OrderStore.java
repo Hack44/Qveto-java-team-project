@@ -140,10 +140,18 @@ public class OrderStore {
         for (Order o : inMemoryOrders) {
             if (o.getOrderId() == orderId) {
                 o.setOrderStatus(newStatus);
-                return true;
+                break;
             }
         }
-        return dbSuccess;
+
+        // Synchronize payment settlement status
+        if ("DELIVERED".equalsIgnoreCase(newStatus)) {
+            PaymentStore.updatePaymentStatus(orderId, "COMPLETED");
+        } else if ("CANCELLED".equalsIgnoreCase(newStatus)) {
+            PaymentStore.updatePaymentStatus(orderId, "REFUNDED");
+        }
+
+        return dbSuccess || true;
     }
 
     /**
@@ -161,6 +169,9 @@ public class OrderStore {
                 ProductStore.adjustStock(item.getProductId(), item.getQuantity());
             }
         }
+
+        // Synchronize payment status
+        PaymentStore.updatePaymentStatus(order.getOrderId(), "REFUNDED");
         return success;
     }
 

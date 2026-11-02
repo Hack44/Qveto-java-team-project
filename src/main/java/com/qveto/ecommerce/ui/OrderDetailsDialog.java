@@ -2,6 +2,8 @@ package com.qveto.ecommerce.ui;
 
 import com.qveto.ecommerce.model.Order;
 import com.qveto.ecommerce.model.OrderItem;
+import com.qveto.ecommerce.model.Payment;
+import com.qveto.ecommerce.util.PaymentStore;
 import com.qveto.ecommerce.util.ValidationUtil;
 
 import javax.swing.*;
@@ -14,8 +16,10 @@ import java.io.FileWriter;
 import java.io.IOException;
 
 /**
- * Modal dialog displaying detailed order breakdown, items, pricing, and invoice summary.
- * Fulfills Member 2 responsibility: "Create the customer profile and order-history screens."
+ * Modal dialog displaying detailed order breakdown, items, pricing, payment settlement,
+ * and official invoice summary with receipt export.
+ *
+ * Supports Member 2 (UI, Presentation & Store Management) customer order history and invoice requirements.
  */
 public class OrderDetailsDialog extends JDialog {
 
@@ -25,7 +29,7 @@ public class OrderDetailsDialog extends JDialog {
     }
 
     private void initComponents(Order order, String customerAddress) {
-        setSize(580, 530);
+        setSize(600, 560);
         setLocationRelativeTo(getOwner());
         setLayout(new BorderLayout());
 
@@ -55,8 +59,14 @@ public class OrderDetailsDialog extends JDialog {
         contentPanel.setBackground(Color.WHITE);
         contentPanel.setBorder(new EmptyBorder(16, 20, 16, 20));
 
-        // Info Grid
-        JPanel infoGrid = new JPanel(new GridLayout(3, 2, 10, 6));
+        // Retrieve associated payment record
+        Payment payment = PaymentStore.getPaymentForOrder(order.getOrderId());
+        String payStatus = payment.getPaymentStatus();
+        String statusColor = "COMPLETED".equalsIgnoreCase(payStatus) ? "#16a34a"
+                : ("PENDING".equalsIgnoreCase(payStatus) ? "#d97706" : "#dc2626");
+
+        // Info Grid (4 rows x 2 columns)
+        JPanel infoGrid = new JPanel(new GridLayout(4, 2, 10, 6));
         infoGrid.setBackground(new Color(248, 250, 252));
         infoGrid.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(new Color(226, 232, 240)),
@@ -64,8 +74,10 @@ public class OrderDetailsDialog extends JDialog {
         ));
 
         infoGrid.add(createMetaLabel("Order Date:", order.getOrderDate()));
-        infoGrid.add(createMetaLabel("Status:", order.getOrderStatus()));
-        infoGrid.add(createMetaLabel("Payment Mode:", order.getPaymentMethod()));
+        infoGrid.add(createMetaLabel("Order Status:", order.getOrderStatus()));
+        infoGrid.add(createMetaLabel("Payment Mode:", payment.getPaymentMethod()));
+        infoGrid.add(createMetaLabel("Payment Status:", "<font color='" + statusColor + "'><b>" + payStatus + "</b></font>"));
+        infoGrid.add(createMetaLabel("Transaction Ref:", payment.getTransactionRef()));
         infoGrid.add(createMetaLabel("Delivery:", "Standard Courier"));
         infoGrid.add(createMetaLabel("Shipping To:", customerAddress));
         infoGrid.add(createMetaLabel("Invoice Ref:", "INV-" + order.getOrderId()));
@@ -114,7 +126,7 @@ public class OrderDetailsDialog extends JDialog {
         table.getColumnModel().getColumn(3).setCellRenderer(rightRenderer);
 
         JScrollPane scrollPane = new JScrollPane(table);
-        scrollPane.setPreferredSize(new Dimension(520, 120));
+        scrollPane.setPreferredSize(new Dimension(540, 130));
         scrollPane.setAlignmentX(Component.LEFT_ALIGNMENT);
         contentPanel.add(scrollPane);
         contentPanel.add(Box.createVerticalStrut(14));
@@ -124,7 +136,7 @@ public class OrderDetailsDialog extends JDialog {
         summaryBox.setBackground(Color.WHITE);
         summaryBox.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        JLabel totalLabel = new JLabel(String.format("Total Paid: $%.2f", order.getTotalAmount()));
+        JLabel totalLabel = new JLabel(String.format("Total Amount: $%.2f", order.getTotalAmount()));
         totalLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
         totalLabel.setForeground(new Color(15, 23, 42));
         summaryBox.add(totalLabel);
@@ -142,7 +154,7 @@ public class OrderDetailsDialog extends JDialog {
         exportBtn.setBackground(new Color(37, 99, 235));
         exportBtn.setForeground(Color.WHITE);
         exportBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        exportBtn.addActionListener(e -> handleExportInvoice(order, customerAddress));
+        exportBtn.addActionListener(e -> handleExportInvoice(order, payment, customerAddress));
         actionPanel.add(exportBtn);
 
         JButton closeBtn = new JButton("Close");
@@ -160,7 +172,7 @@ public class OrderDetailsDialog extends JDialog {
         return label;
     }
 
-    private void handleExportInvoice(Order order, String customerAddress) {
+    private void handleExportInvoice(Order order, Payment payment, String customerAddress) {
         String fileName = "Invoice_" + order.getOrderNumber() + ".txt";
         File file = new File(fileName);
 
@@ -169,11 +181,13 @@ public class OrderDetailsDialog extends JDialog {
             writer.write("                   QVETO E-COMMERCE STORE\n");
             writer.write("                  Official Customer Invoice\n");
             writer.write("==============================================================\n");
-            writer.write(String.format("Invoice Ref:     INV-%d\n", order.getOrderId()));
-            writer.write(String.format("Order Number:    %s\n", order.getOrderNumber()));
-            writer.write(String.format("Order Date:      %s\n", order.getOrderDate()));
-            writer.write(String.format("Order Status:    %s\n", order.getOrderStatus()));
-            writer.write(String.format("Payment Method:  %s\n", order.getPaymentMethod()));
+            writer.write(String.format("Invoice Ref:      INV-%d\n", order.getOrderId()));
+            writer.write(String.format("Order Number:     %s\n", order.getOrderNumber()));
+            writer.write(String.format("Order Date:       %s\n", order.getOrderDate()));
+            writer.write(String.format("Order Status:     %s\n", order.getOrderStatus()));
+            writer.write(String.format("Payment Method:   %s\n", payment.getPaymentMethod()));
+            writer.write(String.format("Payment Status:   %s\n", payment.getPaymentStatus()));
+            writer.write(String.format("Transaction Ref:  %s\n", payment.getTransactionRef()));
             writer.write(String.format("Shipping Address: %s\n", customerAddress));
             writer.write("--------------------------------------------------------------\n");
             writer.write(String.format("%-30s %-6s %-12s %-10s\n", "Item Description", "Qty", "Unit Price", "Subtotal"));
@@ -190,7 +204,7 @@ public class OrderDetailsDialog extends JDialog {
             }
 
             writer.write("--------------------------------------------------------------\n");
-            writer.write(String.format("GRAND TOTAL: $%.2f\n", order.getTotalAmount()));
+            writer.write(String.format("GRAND TOTAL:      $%.2f\n", order.getTotalAmount()));
             writer.write("==============================================================\n");
             writer.write("Thank you for shopping with Qveto Store!\n");
 

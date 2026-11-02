@@ -33,18 +33,26 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
   * Application Dashboard Shell & Navigation (`DashboardFrame`)
   * Product Discovery: Live keyword search, dynamic category filtering, and Product Details Modal (`ProductDetailsDialog`)
   * Interactive Shopping Cart with dynamic badge, quantity controls, cart persistence (`CartStore` & `CartDAO`), and checkout confirmation
+  * Simulated Payment Gateway & Settlement Integration (`PaymentStore` & `PaymentDAO`):
+    * Multi-channel checkout supporting Cash on Delivery (COD), UPI (Simulated), Credit/Debit Card, and Net Banking
+    * Automated settlement lifecycle management: immediate `COMPLETED` for online channels, `PENDING` for COD, auto-settlement on `DELIVERED`, and automatic refund marking (`REFUNDED`) on order cancellation
+    * Unique transaction reference tracking (`TXN-...`) with financial audit persistence
   * Automated Inventory Stock Synchronization: Order checkout automatically reserves inventory (`ProductStore.adjustStock`), and order cancellations automatically replenish stock
-  * Customer Profile Management (View, Edit Contact Info, Change Password Dialogs synced with MySQL)
+  * Customer Profile Management (View, Edit Contact Info, Change Password Dialogs synced with MySQL, and Lifetime Purchase Summary)
   * Customer Order History Screen with Status Filtering & Order Cancellation
-  * Order Details & Invoice Modal with Text Receipt Export (`OrderDetailsDialog`)
+  * Order Details & Invoice Modal with Official Receipt Export (`OrderDetailsDialog`): Real-time payment settlement badge, transaction reference ID, and formatted text invoice export
   * Admin Product Management: Add new product with validation, Edit & Restock inventory dialog (`EditProductDialog`) with quick restock actions, and product deletion
   * Admin Low Stock Alerts: Real-time low-stock filtering and colored inventory warning badges (`[LOW STOCK]`, `[OUT OF STOCK]`)
-  * Admin Order Fulfillment Management: Inspect order details, filter by status, and advance order status (`PENDING` -> `CONFIRMED` -> `SHIPPED` -> `DELIVERED`)
-  * Admin User Management (`createAdminUsersPanel`): Live user directory, real-time KPI metrics, search by name/email, role filtering, User Dossier Modal (`UserDetailsDialog`), and account deactivation with self-deletion protection
+  * Admin Order Fulfillment Management: Inspect order details, filter by status, and advance order status (`PENDING` -> `CONFIRMED` -> `SHIPPED` -> `DELIVERED`) with automated payment settlement
+  * Admin User Management (`createAdminUsersPanel`): Live user directory, real-time KPI metrics, search by name/email, role filtering, User Dossier Modal (`UserDetailsDialog` with Customer Lifetime Value calculation), and account deactivation with self-deletion protection
   * Admin Category Management (`CategoryManagementDialog` & `CategoryStore`): Interactive category manager dialog allowing adding categories, renaming, deleting with product safety check, and reviewing product counts
-  * Executive Analytics Dashboard (`ReportStore` & `ReportDAO`): Live sales revenue, order fulfillment pipeline cards, category revenue breakdown, and top-selling products leaderboard
+  * Executive Analytics Command Center (`ReportStore` & `ReportDAO`):
+    * 6-Metric KPI Deck: Gross Sales Revenue, Settled Collections, Total Orders, Average Order Value (AOV), Active Customers, Low-Stock Exposure
+    * Top-Selling Products Velocity Leaderboard (`JTable` with ranking, volume, and revenue)
+    * Multi-Tab Analytics Breakdown: Order Lifecycle Distribution, Category Revenue Breakdown, Customer Lifetime Value (CLV) Leaderboard, and Payment Channel Distribution
+    * One-click Executive Performance Report text export (`qveto_executive_report.txt`)
   * Real-Time Database Status Indicator (`DBStatusUtil`): Visual connectivity pill (`● MySQL Active` vs `○ Standalone Demo`) across login and dashboard headers
-  * Centralized Store Architecture (`UserStore`, `ProductStore`, `OrderStore`, `CategoryStore`, `CartStore`, `ReportStore`) coordinating between JDBC DAOs and resilient in-memory fallback state
+  * Centralized Store Architecture (`UserStore`, `ProductStore`, `OrderStore`, `CategoryStore`, `CartStore`, `ReportStore`, `PaymentStore`) coordinating between JDBC DAOs and resilient in-memory fallback state
   * Centralized Form Validation Utility (`ValidationUtil`)
 * **Member 3:** Catalog, Cart & Order Placement Services
 * **Member 4:** Inventory Consistency, Invoices & Sales Reporting
