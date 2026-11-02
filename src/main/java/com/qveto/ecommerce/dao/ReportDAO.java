@@ -19,6 +19,7 @@ import java.util.Map;
  * - Best-Selling Products by units sold and revenue
  * - Low-Stock Exposure & Inventory alerts
  * - Category-wise Sales Revenue
+ * - Database View integrations (view_sales_summary, view_low_stock_alerts, view_customer_order_history)
  *
  * Member 1 — DB/JDBC layer.
  */
@@ -49,6 +50,103 @@ public class ReportDAO {
         public int getTotalUnitsSold() { return totalUnitsSold; }
         public BigDecimal getTotalRevenue() { return totalRevenue; }
         public double getTotalRevenueAsDouble() { return totalRevenue.doubleValue(); }
+    }
+
+    /**
+     * Data transfer object for executive KPI sales summary.
+     */
+    public static class SalesExecutiveSummary {
+        private final int totalOrders;
+        private final BigDecimal grossRevenue;
+        private final BigDecimal averageOrderValue;
+        private final int deliveredOrders;
+        private final int confirmedOrders;
+        private final int shippedOrders;
+        private final int pendingOrders;
+        private final int cancelledOrders;
+
+        public SalesExecutiveSummary(int totalOrders, BigDecimal grossRevenue, BigDecimal averageOrderValue,
+                                     int deliveredOrders, int confirmedOrders, int shippedOrders,
+                                     int pendingOrders, int cancelledOrders) {
+            this.totalOrders = totalOrders;
+            this.grossRevenue = grossRevenue != null ? grossRevenue : BigDecimal.ZERO;
+            this.averageOrderValue = averageOrderValue != null ? averageOrderValue : BigDecimal.ZERO;
+            this.deliveredOrders = deliveredOrders;
+            this.confirmedOrders = confirmedOrders;
+            this.shippedOrders = shippedOrders;
+            this.pendingOrders = pendingOrders;
+            this.cancelledOrders = cancelledOrders;
+        }
+
+        public int getTotalOrders() { return totalOrders; }
+        public BigDecimal getGrossRevenue() { return grossRevenue; }
+        public BigDecimal getAverageOrderValue() { return averageOrderValue; }
+        public int getDeliveredOrders() { return deliveredOrders; }
+        public int getConfirmedOrders() { return confirmedOrders; }
+        public int getShippedOrders() { return shippedOrders; }
+        public int getPendingOrders() { return pendingOrders; }
+        public int getCancelledOrders() { return cancelledOrders; }
+    }
+
+    /**
+     * Data transfer object for inventory risk and reorder alerts.
+     */
+    public static class LowStockAlert {
+        private final int productId;
+        private final String productName;
+        private final String categoryName;
+        private final int stockQuantity;
+        private final int threshold;
+        private final String status;
+        private final int unitsBelowThreshold;
+
+        public LowStockAlert(int productId, String productName, String categoryName,
+                             int stockQuantity, int threshold, String status, int unitsBelowThreshold) {
+            this.productId = productId;
+            this.productName = productName;
+            this.categoryName = categoryName;
+            this.stockQuantity = stockQuantity;
+            this.threshold = threshold;
+            this.status = status;
+            this.unitsBelowThreshold = unitsBelowThreshold;
+        }
+
+        public int getProductId() { return productId; }
+        public String getProductName() { return productName; }
+        public String getCategoryName() { return categoryName; }
+        public int getStockQuantity() { return stockQuantity; }
+        public int getThreshold() { return threshold; }
+        public String getStatus() { return status; }
+        public int getUnitsBelowThreshold() { return unitsBelowThreshold; }
+    }
+
+    /**
+     * Data transfer object for customer lifetime value analysis.
+     */
+    public static class CustomerSpendStat {
+        private final int userId;
+        private final String fullName;
+        private final String email;
+        private final int lifetimeOrders;
+        private final BigDecimal lifetimeSpent;
+        private final String lastOrderTimestamp;
+
+        public CustomerSpendStat(int userId, String fullName, String email,
+                                 int lifetimeOrders, BigDecimal lifetimeSpent, String lastOrderTimestamp) {
+            this.userId = userId;
+            this.fullName = fullName;
+            this.email = email;
+            this.lifetimeOrders = lifetimeOrders;
+            this.lifetimeSpent = lifetimeSpent != null ? lifetimeSpent : BigDecimal.ZERO;
+            this.lastOrderTimestamp = lastOrderTimestamp != null ? lastOrderTimestamp : "N/A";
+        }
+
+        public int getUserId() { return userId; }
+        public String getFullName() { return fullName; }
+        public String getEmail() { return email; }
+        public int getLifetimeOrders() { return lifetimeOrders; }
+        public BigDecimal getLifetimeSpent() { return lifetimeSpent; }
+        public String getLastOrderTimestamp() { return lastOrderTimestamp; }
     }
 
     // ---------------------------------------------------------------
@@ -121,6 +219,54 @@ public class ReportDAO {
         return 0;
     }
 
+    /**
+     * Retrieves an executive KPI sales summary from view_sales_summary.
+     * Falls back to computed query if migration view is not applied yet.
+     */
+    public SalesExecutiveSummary getSalesExecutiveSummary() {
+        String viewSql = "SELECT * FROM view_sales_summary";
+
+        try (Connection conn = DBConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(viewSql);
+             ResultSet rs = stmt.executeQuery()) {
+
+            if (rs.next()) {
+                return new SalesExecutiveSummary(
+                    rs.getInt("total_orders"),
+                    rs.getBigDecimal("gross_revenue"),
+                    rs.getBigDecimal("average_order_value"),
+                    rs.getInt("delivered_orders"),
+                    rs.getInt("confirmed_orders"),
+                    rs.getInt("shipped_orders"),
+                    rs.getInt("pending_orders"),
+                    rs.getInt("cancelled_orders")
+                );
+            }
+        } catch (SQLException e) {
+            // View might not be created yet, fallback to direct query
+            return getFallbackSalesSummary();
+        }
+        return getFallbackSalesSummary();
+    }
+
+    private SalesExecutiveSummary getFallbackSalesSummary() {
+        Map<String, Integer> dist = getOrderStatusDistribution();
+        BigDecimal rev = calculateTotalRevenue();
+        int total = countTotalOrders();
+        BigDecimal aov = total > 0 ? rev.divide(BigDecimal.valueOf(total), 2, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO;
+
+        return new SalesExecutiveSummary(
+            total,
+            rev,
+            aov,
+            dist.getOrDefault("DELIVERED", 0),
+            dist.getOrDefault("CONFIRMED", 0),
+            dist.getOrDefault("SHIPPED", 0),
+            dist.getOrDefault("PENDING", 0),
+            dist.getOrDefault("CANCELLED", 0)
+        );
+    }
+
     // ---------------------------------------------------------------
     // Order Status Distribution
     // ---------------------------------------------------------------
@@ -133,7 +279,6 @@ public class ReportDAO {
      */
     public Map<String, Integer> getOrderStatusDistribution() {
         Map<String, Integer> distribution = new LinkedHashMap<>();
-        // Initialize standard statuses with 0
         distribution.put("PENDING", 0);
         distribution.put("CONFIRMED", 0);
         distribution.put("SHIPPED", 0);
@@ -180,6 +325,74 @@ public class ReportDAO {
             System.err.println("[ReportDAO] getLowStockExposureCount() failed: " + e.getMessage());
         }
         return 0;
+    }
+
+    /**
+     * Retrieves detailed low stock alert list utilizing view_low_stock_alerts.
+     *
+     * @return list of {@link LowStockAlert}
+     */
+    public List<LowStockAlert> getDetailedLowStockAlerts() {
+        List<LowStockAlert> list = new ArrayList<>();
+        String sql = "SELECT product_id, product_name, category_name, stock_quantity, "
+                   + "low_stock_threshold, stock_status, units_below_threshold "
+                   + "FROM view_low_stock_alerts";
+
+        try (Connection conn = DBConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                list.add(new LowStockAlert(
+                    rs.getInt("product_id"),
+                    rs.getString("product_name"),
+                    rs.getString("category_name"),
+                    rs.getInt("stock_quantity"),
+                    rs.getInt("low_stock_threshold"),
+                    rs.getString("stock_status"),
+                    rs.getInt("units_below_threshold")
+                ));
+            }
+            return list;
+        } catch (SQLException e) {
+            // Fallback to products table direct query
+            return getFallbackLowStockAlerts();
+        }
+    }
+
+    private List<LowStockAlert> getFallbackLowStockAlerts() {
+        List<LowStockAlert> list = new ArrayList<>();
+        String sql = "SELECT p.product_id, p.product_name, COALESCE(c.category_name, 'General') AS cat_name, "
+                   + "p.stock_quantity, p.low_stock_threshold "
+                   + "FROM products p "
+                   + "LEFT JOIN categories c ON p.category_id = c.category_id "
+                   + "WHERE p.stock_quantity <= p.low_stock_threshold "
+                   + "ORDER BY p.stock_quantity ASC";
+
+        try (Connection conn = DBConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                int stock = rs.getInt("stock_quantity");
+                int thresh = rs.getInt("low_stock_threshold");
+                String status = stock == 0 ? "OUT_OF_STOCK" : "LOW_STOCK";
+                int diff = Math.max(0, thresh - stock);
+
+                list.add(new LowStockAlert(
+                    rs.getInt("product_id"),
+                    rs.getString("product_name"),
+                    rs.getString("cat_name"),
+                    stock,
+                    thresh,
+                    status,
+                    diff
+                ));
+            }
+        } catch (SQLException e) {
+            System.err.println("[ReportDAO] getFallbackLowStockAlerts() failed: " + e.getMessage());
+        }
+        return list;
     }
 
     // ---------------------------------------------------------------
@@ -261,5 +474,80 @@ public class ReportDAO {
             System.err.println("[ReportDAO] getRevenueByCategory() failed: " + e.getMessage());
         }
         return breakdown;
+    }
+
+    // ---------------------------------------------------------------
+    // Customer Spend Leaderboard
+    // ---------------------------------------------------------------
+
+    /**
+     * Retrieves the top customer accounts by lifetime spend using view_customer_order_history.
+     *
+     * @param limit maximum customers to return
+     * @return list of {@link CustomerSpendStat}
+     */
+    public List<CustomerSpendStat> getCustomerSpendLeaderboard(int limit) {
+        List<CustomerSpendStat> list = new ArrayList<>();
+        String sql = "SELECT user_id, full_name, email, lifetime_orders, lifetime_spent, last_order_timestamp "
+                   + "FROM view_customer_order_history "
+                   + "ORDER BY lifetime_spent DESC LIMIT ?";
+
+        try (Connection conn = DBConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, limit > 0 ? limit : 5);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    list.add(new CustomerSpendStat(
+                        rs.getInt("user_id"),
+                        rs.getString("full_name"),
+                        rs.getString("email"),
+                        rs.getInt("lifetime_orders"),
+                        rs.getBigDecimal("lifetime_spent"),
+                        rs.getString("last_order_timestamp")
+                    ));
+                }
+            }
+            return list;
+        } catch (SQLException e) {
+            // Fallback to direct query
+            return getFallbackCustomerSpend(limit);
+        }
+    }
+
+    private List<CustomerSpendStat> getFallbackCustomerSpend(int limit) {
+        List<CustomerSpendStat> list = new ArrayList<>();
+        String sql = "SELECT u.user_id, u.full_name, u.email, "
+                   + "COUNT(o.order_id) AS orders_count, "
+                   + "COALESCE(SUM(CASE WHEN o.order_status != 'CANCELLED' THEN o.total_amount ELSE 0.00 END), 0.00) AS spent, "
+                   + "MAX(o.created_at) AS last_order "
+                   + "FROM users u "
+                   + "LEFT JOIN orders o ON u.user_id = o.user_id "
+                   + "WHERE u.role = 'CUSTOMER' "
+                   + "GROUP BY u.user_id, u.full_name, u.email "
+                   + "ORDER BY spent DESC LIMIT ?";
+
+        try (Connection conn = DBConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, limit > 0 ? limit : 5);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    list.add(new CustomerSpendStat(
+                        rs.getInt("user_id"),
+                        rs.getString("full_name"),
+                        rs.getString("email"),
+                        rs.getInt("orders_count"),
+                        rs.getBigDecimal("spent"),
+                        rs.getString("last_order")
+                    ));
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("[ReportDAO] getFallbackCustomerSpend() failed: " + e.getMessage());
+        }
+        return list;
     }
 }
