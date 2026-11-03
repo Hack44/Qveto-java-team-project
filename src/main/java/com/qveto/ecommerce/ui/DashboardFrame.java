@@ -1,14 +1,17 @@
 package com.qveto.ecommerce.ui;
 
+import com.qveto.ecommerce.dao.ReportDAO.CustomerSpendStat;
 import com.qveto.ecommerce.dao.ReportDAO.ProductSalesStat;
 import com.qveto.ecommerce.model.Order;
 import com.qveto.ecommerce.model.OrderItem;
+import com.qveto.ecommerce.model.Payment;
 import com.qveto.ecommerce.model.Product;
 import com.qveto.ecommerce.model.User;
 import com.qveto.ecommerce.util.CartStore;
 import com.qveto.ecommerce.util.CategoryStore;
 import com.qveto.ecommerce.util.DBStatusUtil;
 import com.qveto.ecommerce.util.OrderStore;
+import com.qveto.ecommerce.util.PaymentStore;
 import com.qveto.ecommerce.util.ProductStore;
 import com.qveto.ecommerce.util.ReportStore;
 import com.qveto.ecommerce.util.UserStore;
@@ -20,6 +23,7 @@ import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.io.File;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -79,11 +83,15 @@ public class DashboardFrame extends JFrame {
     // Admin Reports & Analytics UI components
     private JLabel kpiTotalOrdersVal;
     private JLabel kpiTotalRevenueVal;
+    private JLabel kpiCollectedRevenueVal;
+    private JLabel kpiAvgOrderVal;
     private JLabel kpiTotalCustomersVal;
     private JLabel kpiLowStockVal;
     private DefaultTableModel topSellingTableModel;
     private DefaultTableModel orderStatusDistTableModel;
     private DefaultTableModel categoryRevenueTableModel;
+    private DefaultTableModel customerSpendTableModel;
+    private DefaultTableModel paymentDistTableModel;
 
     // Cart UI components
     private JPanel cartRootPanel;
@@ -614,7 +622,12 @@ public class DashboardFrame extends JFrame {
         gbc.gridy = 4;
         panel.add(new JLabel("Select Payment Method:"), gbc);
 
-        JComboBox<String> paymentCombo = new JComboBox<>(new String[]{"Cash on Delivery (COD)", "UPI / Card Online (Test Mode)"});
+        JComboBox<String> paymentCombo = new JComboBox<>(new String[]{
+                "Cash on Delivery (COD)",
+                "UPI (Instant Online Pay - Simulated)",
+                "Credit / Debit Card (Online Gateway)",
+                "Net Banking (Instant Settle)"
+        });
         gbc.gridy = 5;
         panel.add(paymentCombo, gbc);
 
@@ -637,7 +650,15 @@ public class DashboardFrame extends JFrame {
             }
 
             currentUser.setAddress(address);
-            String selectedPayment = paymentCombo.getSelectedIndex() == 0 ? "COD" : "PREPAID";
+            int pIndex = paymentCombo.getSelectedIndex();
+            String selectedPayment;
+            switch (pIndex) {
+                case 1: selectedPayment = "UPI"; break;
+                case 2: selectedPayment = "CREDIT_CARD"; break;
+                case 3: selectedPayment = "NET_BANKING"; break;
+                default: selectedPayment = "COD"; break;
+            }
+
             String newOrderCode = "ORD-2026-" + String.format("%03d", customerOrders.size() + 1);
 
             Order newOrder = new Order(customerOrders.size() + 1, newOrderCode, currentUser.getUserId(),
@@ -651,6 +672,9 @@ public class DashboardFrame extends JFrame {
             // Persist order & deduct inventory stock
             OrderStore.placeOrder(newOrder);
             customerOrders.add(0, newOrder); // add to top of local orders list
+
+            // Process payment transaction via PaymentStore / PaymentDAO
+            Payment payment = PaymentStore.processPayment(newOrder.getOrderId(), selectedPayment, grandTotal);
 
             // Refresh products catalog after stock adjustment
             catalogProducts.clear();
@@ -670,10 +694,15 @@ public class DashboardFrame extends JFrame {
             // Switch to Order History tab to view new order
             tabbedPane.setSelectedIndex(2);
 
+            String payBadge = "COMPLETED".equalsIgnoreCase(payment.getPaymentStatus())
+                    ? "<font color='#16a34a'><b>COMPLETED</b></font>"
+                    : "<font color='#d97706'><b>PENDING (COD)</b></font>";
+
             ValidationUtil.showSuccess(this,
                     "🎉 <b>Order Placed Successfully!</b><br/>"
                             + "Order Reference: <b>" + newOrderCode + "</b><br/>"
                             + "Total Amount: <b>$" + String.format("%.2f", grandTotal) + "</b> (" + selectedPayment + ")<br/>"
+                            + "Payment Status: " + payBadge + " (Ref: <code>" + payment.getTransactionRef() + "</code>)<br/>"
                             + "Inventory stock has been reserved. You can track status in <b>Order History</b>.",
                     "Order Placed");
         });
@@ -764,6 +793,20 @@ public class DashboardFrame extends JFrame {
         statusLabel.setFont(new Font("Segoe UI", Font.BOLD, 13));
         card.add(statusLabel, gbc);
 
+        // Lifetime Spend / Value
+        gbc.gridx = 0;
+        gbc.gridy = 6;
+        card.add(createFieldLabel("Lifetime Purchases:"), gbc);
+        gbc.gridx = 1;
+        double myTotalSpend = customerOrders.stream()
+                .filter(o -> !"CANCELLED".equalsIgnoreCase(o.getOrderStatus()))
+                .mapToDouble(Order::getTotalAmount)
+                .sum();
+        JLabel spendLabel = new JLabel(String.format("$%.2f (%d order%s placed)", myTotalSpend, customerOrders.size(), customerOrders.size() == 1 ? "" : "s"));
+        spendLabel.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        spendLabel.setForeground(new Color(15, 23, 42));
+        card.add(spendLabel, gbc);
+
         // Actions: Edit Info and Change Password
         JPanel buttonRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
         buttonRow.setOpaque(false);
@@ -785,7 +828,7 @@ public class DashboardFrame extends JFrame {
         buttonRow.add(passBtn);
 
         gbc.gridx = 0;
-        gbc.gridy = 6;
+        gbc.gridy = 7;
         gbc.gridwidth = 2;
         gbc.insets = new Insets(20, 10, 10, 10);
         card.add(buttonRow, gbc);
@@ -1134,10 +1177,11 @@ public class DashboardFrame extends JFrame {
             refreshAdminOrdersTable();
             refreshCustomerCatalogTable(catalogProducts);
             refreshAdminCatalogTable();
+            refreshAdminReportsPanel();
 
             ValidationUtil.showSuccess(this,
                     "Order <b>" + selected.getOrderNumber() + "</b> has been successfully cancelled.<br/>"
-                            + "Inventory stock has been replenished.",
+                            + "Inventory stock has been replenished and payment marked as REFUNDED.",
                     "Order Cancelled");
         }
     }
@@ -1595,10 +1639,19 @@ public class DashboardFrame extends JFrame {
         if (newStatus != null && !newStatus.equalsIgnoreCase(current)) {
             OrderStore.updateStatus(selected.getOrderId(), newStatus);
             selected.setOrderStatus(newStatus);
+
+            // Synchronize payment settlement
+            if ("DELIVERED".equalsIgnoreCase(newStatus)) {
+                PaymentStore.updatePaymentStatus(selected.getOrderId(), "COMPLETED");
+            } else if ("CANCELLED".equalsIgnoreCase(newStatus)) {
+                PaymentStore.updatePaymentStatus(selected.getOrderId(), "REFUNDED");
+            }
+
             refreshAdminOrdersTable();
             if (ordersTableModel != null) {
                 applyOrderFilters();
             }
+            refreshAdminReportsPanel();
             ValidationUtil.showSuccess(this,
                     "Order <b>" + selected.getOrderNumber() + "</b> status updated to <b>" + newStatus + "</b>.",
                     "Status Updated");
@@ -1815,8 +1868,12 @@ public class DashboardFrame extends JFrame {
 
         final int targetId = userId;
         int orderCount = (int) customerOrders.stream().filter(o -> o.getUserId() == targetId).count();
+        double lifetimeSpend = customerOrders.stream()
+                .filter(o -> o.getUserId() == targetId && !"CANCELLED".equalsIgnoreCase(o.getOrderStatus()))
+                .mapToDouble(Order::getTotalAmount)
+                .sum();
 
-        UserDetailsDialog dialog = new UserDetailsDialog(this, selectedUser, orderCount);
+        UserDetailsDialog dialog = new UserDetailsDialog(this, selectedUser, orderCount, lifetimeSpend);
         dialog.setVisible(true);
     }
 
@@ -1868,11 +1925,11 @@ public class DashboardFrame extends JFrame {
 
         JPanel titleBlock = new JPanel(new GridLayout(2, 1, 0, 2));
         titleBlock.setBackground(Color.WHITE);
-        JLabel titleLabel = new JLabel("Executive Performance & Sales Analytics");
+        JLabel titleLabel = new JLabel("Executive Performance, Revenue & Customer Lifetime Analytics");
         titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 17));
         titleLabel.setForeground(new Color(15, 23, 42));
 
-        JLabel subtitleLabel = new JLabel("Real-time revenue velocity, product demand leaderboard, and operational pipeline metrics");
+        JLabel subtitleLabel = new JLabel("Real-time sales velocity, settled collections, customer lifetime spend (CLV), and payment audit");
         subtitleLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         subtitleLabel.setForeground(new Color(100, 116, 139));
 
@@ -1890,7 +1947,7 @@ public class DashboardFrame extends JFrame {
         refreshBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
         refreshBtn.addActionListener(e -> {
             refreshAdminReportsPanel();
-            ValidationUtil.showSuccess(this, "Executive analytics metrics synchronized with latest transactions.", "Analytics Refreshed");
+            ValidationUtil.showSuccess(this, "Executive analytics & payment settlement metrics synchronized.", "Analytics Refreshed");
         });
 
         JButton exportBtn = new JButton("Export Executive Report (.txt)");
@@ -1905,18 +1962,22 @@ public class DashboardFrame extends JFrame {
         headerRow.add(actionBtnRow, BorderLayout.EAST);
         northPanel.add(headerRow, BorderLayout.NORTH);
 
-        // KPI Deck (4 cards)
-        JPanel kpiGrid = new JPanel(new GridLayout(1, 4, 12, 0));
+        // KPI Deck (6 cards: 2 rows x 3 columns)
+        JPanel kpiGrid = new JPanel(new GridLayout(2, 3, 12, 8));
         kpiGrid.setBackground(Color.WHITE);
         kpiGrid.setBorder(new EmptyBorder(8, 0, 4, 0));
 
         kpiTotalRevenueVal = new JLabel("$0.00");
+        kpiCollectedRevenueVal = new JLabel("$0.00");
         kpiTotalOrdersVal = new JLabel("0");
+        kpiAvgOrderVal = new JLabel("$0.00");
         kpiTotalCustomersVal = new JLabel("0");
         kpiLowStockVal = new JLabel("0 SKUs");
 
         kpiGrid.add(createKpiCard("Gross Sales Revenue", kpiTotalRevenueVal, new Color(16, 185, 129)));
+        kpiGrid.add(createKpiCard("Settled Collections", kpiCollectedRevenueVal, new Color(5, 150, 105)));
         kpiGrid.add(createKpiCard("Total Orders", kpiTotalOrdersVal, new Color(37, 99, 235)));
+        kpiGrid.add(createKpiCard("Avg Order Value (AOV)", kpiAvgOrderVal, new Color(124, 58, 237)));
         kpiGrid.add(createKpiCard("Active Customers", kpiTotalCustomersVal, new Color(139, 92, 246)));
         kpiGrid.add(createKpiCard("Low Stock Exposure", kpiLowStockVal, new Color(239, 68, 68)));
 
@@ -1970,22 +2031,14 @@ public class DashboardFrame extends JFrame {
         leftCard.add(new JScrollPane(topSellingTable), BorderLayout.CENTER);
         centerGrid.add(leftCard);
 
-        // --- Right Card: Stacked Breakdown Tables ---
-        JPanel rightStack = new JPanel(new GridLayout(2, 1, 0, 12));
-        rightStack.setBackground(Color.WHITE);
+        // --- Right Card: Multi-Tab Analytics Breakdown ---
+        JTabbedPane rightTabbedPane = new JTabbedPane();
+        rightTabbedPane.setFont(new Font("Segoe UI", Font.PLAIN, 11));
 
-        // Top Sub-card: Order Lifecycle Distribution
+        // Tab 1: Order Lifecycle Distribution
         JPanel orderDistCard = new JPanel(new BorderLayout(6, 6));
         orderDistCard.setBackground(Color.WHITE);
-        orderDistCard.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(226, 232, 240), 1),
-                new EmptyBorder(10, 10, 10, 10)
-        ));
-
-        JLabel orderDistTitle = new JLabel("Order Lifecycle Distribution");
-        orderDistTitle.setFont(new Font("Segoe UI", Font.BOLD, 13));
-        orderDistTitle.setForeground(new Color(30, 41, 59));
-        orderDistCard.add(orderDistTitle, BorderLayout.NORTH);
+        orderDistCard.setBorder(new EmptyBorder(8, 8, 8, 8));
 
         String[] orderDistCols = {"Status", "Orders Count", "% Share"};
         orderStatusDistTableModel = new DefaultTableModel(orderDistCols, 0) {
@@ -1994,29 +2047,19 @@ public class DashboardFrame extends JFrame {
                 return false;
             }
         };
-
         JTable orderDistTable = new JTable(orderStatusDistTableModel);
         orderDistTable.setRowHeight(24);
         orderDistTable.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         orderDistTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 11));
         orderDistTable.getColumnModel().getColumn(1).setCellRenderer(centerCellRenderer);
         orderDistTable.getColumnModel().getColumn(2).setCellRenderer(centerCellRenderer);
-
         orderDistCard.add(new JScrollPane(orderDistTable), BorderLayout.CENTER);
-        rightStack.add(orderDistCard);
+        rightTabbedPane.addTab("Order Lifecycle", orderDistCard);
 
-        // Bottom Sub-card: Category Revenue Breakdown
+        // Tab 2: Category Revenue Breakdown
         JPanel catRevCard = new JPanel(new BorderLayout(6, 6));
         catRevCard.setBackground(Color.WHITE);
-        catRevCard.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(226, 232, 240), 1),
-                new EmptyBorder(10, 10, 10, 10)
-        ));
-
-        JLabel catRevTitle = new JLabel("Revenue Contribution by Category");
-        catRevTitle.setFont(new Font("Segoe UI", Font.BOLD, 13));
-        catRevTitle.setForeground(new Color(30, 41, 59));
-        catRevCard.add(catRevTitle, BorderLayout.NORTH);
+        catRevCard.setBorder(new EmptyBorder(8, 8, 8, 8));
 
         String[] catRevCols = {"Category", "Revenue ($)", "% Share"};
         categoryRevenueTableModel = new DefaultTableModel(catRevCols, 0) {
@@ -2025,18 +2068,60 @@ public class DashboardFrame extends JFrame {
                 return false;
             }
         };
-
         JTable catRevTable = new JTable(categoryRevenueTableModel);
         catRevTable.setRowHeight(24);
         catRevTable.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         catRevTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 11));
         catRevTable.getColumnModel().getColumn(1).setCellRenderer(rightCellRenderer);
         catRevTable.getColumnModel().getColumn(2).setCellRenderer(centerCellRenderer);
-
         catRevCard.add(new JScrollPane(catRevTable), BorderLayout.CENTER);
-        rightStack.add(catRevCard);
+        rightTabbedPane.addTab("Category Revenue", catRevCard);
 
-        centerGrid.add(rightStack);
+        // Tab 3: Customer Lifetime Value (CLV)
+        JPanel clvCard = new JPanel(new BorderLayout(6, 6));
+        clvCard.setBackground(Color.WHITE);
+        clvCard.setBorder(new EmptyBorder(8, 8, 8, 8));
+
+        String[] clvCols = {"Rank", "Customer", "Orders", "Lifetime ($)"};
+        customerSpendTableModel = new DefaultTableModel(clvCols, 0) {
+            @Override
+            public boolean isCellEditable(int row, int col) {
+                return false;
+            }
+        };
+        JTable clvTable = new JTable(customerSpendTableModel);
+        clvTable.setRowHeight(24);
+        clvTable.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        clvTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 11));
+        clvTable.getColumnModel().getColumn(0).setPreferredWidth(45);
+        clvTable.getColumnModel().getColumn(0).setCellRenderer(centerCellRenderer);
+        clvTable.getColumnModel().getColumn(2).setPreferredWidth(65);
+        clvTable.getColumnModel().getColumn(2).setCellRenderer(centerCellRenderer);
+        clvTable.getColumnModel().getColumn(3).setCellRenderer(rightCellRenderer);
+        clvCard.add(new JScrollPane(clvTable), BorderLayout.CENTER);
+        rightTabbedPane.addTab("Customer Lifetime Value", clvCard);
+
+        // Tab 4: Payment Channels
+        JPanel payDistCard = new JPanel(new BorderLayout(6, 6));
+        payDistCard.setBackground(Color.WHITE);
+        payDistCard.setBorder(new EmptyBorder(8, 8, 8, 8));
+
+        String[] payCols = {"Payment Channel", "Transactions Count"};
+        paymentDistTableModel = new DefaultTableModel(payCols, 0) {
+            @Override
+            public boolean isCellEditable(int row, int col) {
+                return false;
+            }
+        };
+        JTable payDistTable = new JTable(paymentDistTableModel);
+        payDistTable.setRowHeight(24);
+        payDistTable.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        payDistTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 11));
+        payDistTable.getColumnModel().getColumn(1).setCellRenderer(centerCellRenderer);
+        payDistCard.add(new JScrollPane(payDistTable), BorderLayout.CENTER);
+        rightTabbedPane.addTab("Payment Channels", payDistCard);
+
+        centerGrid.add(rightTabbedPane);
         root.add(centerGrid, BorderLayout.CENTER);
 
         // Initial population of metrics
@@ -2049,12 +2134,20 @@ public class DashboardFrame extends JFrame {
         if (kpiTotalOrdersVal == null) return;
 
         double revenue = ReportStore.getTotalRevenue();
+        double collected = ReportStore.getTotalCollectedRevenue();
         int orders = ReportStore.getTotalOrders();
+        double aov = ReportStore.getAverageOrderValue();
         int customers = ReportStore.getTotalCustomers();
         int lowStock = ReportStore.getLowStockExposureCount();
 
         kpiTotalRevenueVal.setText(String.format("$%.2f", revenue));
+        if (kpiCollectedRevenueVal != null) {
+            kpiCollectedRevenueVal.setText(String.format("$%.2f", collected));
+        }
         kpiTotalOrdersVal.setText(String.valueOf(orders));
+        if (kpiAvgOrderVal != null) {
+            kpiAvgOrderVal.setText(String.format("$%.2f", aov));
+        }
         kpiTotalCustomersVal.setText(String.valueOf(customers));
         kpiLowStockVal.setText(lowStock + " SKUs");
 
@@ -2098,6 +2191,33 @@ public class DashboardFrame extends JFrame {
                         e.getKey(),
                         String.format("$%.2f", e.getValue()),
                         String.format("%.1f%%", pct)
+                });
+            }
+        }
+
+        // Customer Lifetime Value Leaderboard
+        if (customerSpendTableModel != null) {
+            customerSpendTableModel.setRowCount(0);
+            List<CustomerSpendStat> clvList = ReportStore.getCustomerSpendLeaderboard(6);
+            int cRank = 1;
+            for (CustomerSpendStat cs : clvList) {
+                customerSpendTableModel.addRow(new Object[]{
+                        "#" + cRank++,
+                        cs.getFullName(),
+                        cs.getLifetimeOrders() + " orders",
+                        String.format("$%.2f", cs.getLifetimeSpent().doubleValue())
+                });
+            }
+        }
+
+        // Payment Method Distribution
+        if (paymentDistTableModel != null) {
+            paymentDistTableModel.setRowCount(0);
+            Map<String, Integer> payDist = ReportStore.getPaymentMethodDistribution();
+            for (Map.Entry<String, Integer> e : payDist.entrySet()) {
+                paymentDistTableModel.addRow(new Object[]{
+                        e.getKey(),
+                        e.getValue() + " txns"
                 });
             }
         }
