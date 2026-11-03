@@ -62,6 +62,8 @@ public class DashboardFrame extends JFrame {
     private JTable customerCatalogTable;
     private JTextField customerSearchField;
     private JComboBox<String> customerCategoryCombo;
+    private JComboBox<String> customerSortCombo;
+    private JCheckBox customerInStockOnlyCheck;
 
     // Admin Catalog UI components
     private DefaultTableModel adminCatalogTableModel;
@@ -221,6 +223,24 @@ public class DashboardFrame extends JFrame {
         customerCategoryCombo.addActionListener(e -> applyCatalogFilters());
         searchBar.add(customerCategoryCombo);
 
+        searchBar.add(new JLabel("Sort By:"));
+        String[] sortOptions = {
+                "Featured (Default)",
+                "Price: Low to High",
+                "Price: High to Low",
+                "Name: A to Z",
+                "Stock: Highest Available"
+        };
+        customerSortCombo = new JComboBox<>(sortOptions);
+        customerSortCombo.addActionListener(e -> applyCatalogFilters());
+        searchBar.add(customerSortCombo);
+
+        customerInStockOnlyCheck = new JCheckBox("In-Stock Only");
+        customerInStockOnlyCheck.setBackground(Color.WHITE);
+        customerInStockOnlyCheck.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        customerInStockOnlyCheck.addActionListener(e -> applyCatalogFilters());
+        searchBar.add(customerInStockOnlyCheck);
+
         JButton filterBtn = new JButton("Filter");
         filterBtn.setBackground(new Color(37, 99, 235));
         filterBtn.setForeground(Color.WHITE);
@@ -232,6 +252,8 @@ public class DashboardFrame extends JFrame {
         resetBtn.addActionListener(e -> {
             customerSearchField.setText("");
             customerCategoryCombo.setSelectedIndex(0);
+            if (customerSortCombo != null) customerSortCombo.setSelectedIndex(0);
+            if (customerInStockOnlyCheck != null) customerInStockOnlyCheck.setSelected(false);
             applyCatalogFilters();
         });
         searchBar.add(resetBtn);
@@ -310,6 +332,31 @@ public class DashboardFrame extends JFrame {
         String selectedCat = customerCategoryCombo != null ? (String) customerCategoryCombo.getSelectedItem() : "All Categories";
 
         List<Product> filtered = ProductStore.searchProducts(keyword, selectedCat);
+
+        if (customerInStockOnlyCheck != null && customerInStockOnlyCheck.isSelected()) {
+            filtered.removeIf(p -> p.getStockQuantity() <= 0);
+        }
+
+        if (customerSortCombo != null) {
+            int sortIndex = customerSortCombo.getSelectedIndex();
+            switch (sortIndex) {
+                case 1: // Price: Low to High
+                    filtered.sort((a, b) -> a.getPrice().compareTo(b.getPrice()));
+                    break;
+                case 2: // Price: High to Low
+                    filtered.sort((a, b) -> b.getPrice().compareTo(a.getPrice()));
+                    break;
+                case 3: // Name: A to Z
+                    filtered.sort((a, b) -> a.getProductName().compareToIgnoreCase(b.getProductName()));
+                    break;
+                case 4: // Stock: Highest Available
+                    filtered.sort((a, b) -> Integer.compare(b.getStockQuantity(), a.getStockQuantity()));
+                    break;
+                default: // Featured (Default)
+                    break;
+            }
+        }
+
         refreshCustomerCatalogTable(filtered);
     }
 
@@ -1239,6 +1286,20 @@ public class DashboardFrame extends JFrame {
         });
         toolBar.add(manageCategoriesBtn);
 
+        JButton procurementBtn = new JButton("📦 Restock Hub");
+        procurementBtn.setBackground(new Color(217, 119, 6));
+        procurementBtn.setForeground(Color.WHITE);
+        procurementBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        procurementBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        procurementBtn.addActionListener(e -> {
+            LowStockProcurementDialog dialog = new LowStockProcurementDialog(this, () -> {
+                refreshAdminCatalogTable();
+                refreshAdminReportsPanel();
+            });
+            dialog.setVisible(true);
+        });
+        toolBar.add(procurementBtn);
+
         adminLowStockFilterCheck = new JCheckBox("Low Stock Alerts Only");
         adminLowStockFilterCheck.setBackground(Color.WHITE);
         adminLowStockFilterCheck.setFont(new Font("Segoe UI", Font.BOLD, 12));
@@ -1957,7 +2018,21 @@ public class DashboardFrame extends JFrame {
         exportBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
         exportBtn.addActionListener(e -> handleExportExecutiveReport());
 
+        JButton restockHubBtn = new JButton("📦 Restock Procurement");
+        restockHubBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        restockHubBtn.setBackground(new Color(217, 119, 6));
+        restockHubBtn.setForeground(Color.WHITE);
+        restockHubBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        restockHubBtn.addActionListener(e -> {
+            LowStockProcurementDialog dialog = new LowStockProcurementDialog(this, () -> {
+                refreshAdminCatalogTable();
+                refreshAdminReportsPanel();
+            });
+            dialog.setVisible(true);
+        });
+
         actionBtnRow.add(refreshBtn);
+        actionBtnRow.add(restockHubBtn);
         actionBtnRow.add(exportBtn);
         headerRow.add(actionBtnRow, BorderLayout.EAST);
         northPanel.add(headerRow, BorderLayout.NORTH);

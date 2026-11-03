@@ -29,7 +29,7 @@ public class OrderDetailsDialog extends JDialog {
     }
 
     private void initComponents(Order order, String customerAddress) {
-        setSize(600, 560);
+        setSize(620, 640);
         setLocationRelativeTo(getOwner());
         setLayout(new BorderLayout());
 
@@ -57,7 +57,11 @@ public class OrderDetailsDialog extends JDialog {
         JPanel contentPanel = new JPanel();
         contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
         contentPanel.setBackground(Color.WHITE);
-        contentPanel.setBorder(new EmptyBorder(16, 20, 16, 20));
+        contentPanel.setBorder(new EmptyBorder(14, 20, 14, 20));
+
+        // Visual Order Tracking Stepper
+        contentPanel.add(createTrackingStepperPanel(order));
+        contentPanel.add(Box.createVerticalStrut(12));
 
         // Retrieve associated payment record
         Payment payment = PaymentStore.getPaymentForOrder(order.getOrderId());
@@ -83,7 +87,7 @@ public class OrderDetailsDialog extends JDialog {
         infoGrid.add(createMetaLabel("Invoice Ref:", "INV-" + order.getOrderId()));
 
         contentPanel.add(infoGrid);
-        contentPanel.add(Box.createVerticalStrut(14));
+        contentPanel.add(Box.createVerticalStrut(12));
 
         // Line Items Table
         JLabel itemsLabel = new JLabel("Ordered Items:");
@@ -164,6 +168,127 @@ public class OrderDetailsDialog extends JDialog {
 
         rootPanel.add(actionPanel, BorderLayout.SOUTH);
         setContentPane(rootPanel);
+    }
+
+    private JPanel createTrackingStepperPanel(Order order) {
+        JPanel stepperCard = new JPanel(new BorderLayout(6, 6));
+        stepperCard.setBackground(Color.WHITE);
+        stepperCard.setAlignmentX(Component.LEFT_ALIGNMENT);
+        stepperCard.setMaximumSize(new Dimension(580, 85));
+
+        String rawStatus = order.getOrderStatus() != null ? order.getOrderStatus().trim().toUpperCase() : "PENDING";
+
+        if ("CANCELLED".equals(rawStatus)) {
+            JPanel cancelCard = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 8));
+            cancelCard.setBackground(new Color(254, 242, 242));
+            cancelCard.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createLineBorder(new Color(248, 113, 113), 1),
+                    new EmptyBorder(6, 12, 6, 12)
+            ));
+            JLabel cancelIcon = new JLabel("✖");
+            cancelIcon.setFont(new Font("Segoe UI", Font.BOLD, 15));
+            cancelIcon.setForeground(new Color(220, 38, 38));
+
+            JLabel cancelText = new JLabel("<html><b>Order Cancelled & Voided</b> — Inventory stock was replenished, and payment was refunded.</html>");
+            cancelText.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+            cancelText.setForeground(new Color(153, 27, 27));
+
+            cancelCard.add(cancelIcon);
+            cancelCard.add(cancelText);
+            stepperCard.add(cancelCard, BorderLayout.CENTER);
+            return stepperCard;
+        }
+
+        int currentStage;
+        String stageDesc;
+        switch (rawStatus) {
+            case "CONFIRMED":
+                currentStage = 2;
+                stageDesc = "Order verified by merchant and queued for warehouse packing.";
+                break;
+            case "SHIPPED":
+                currentStage = 3;
+                stageDesc = "Order dispatched with Standard Courier and is currently in transit.";
+                break;
+            case "DELIVERED":
+                currentStage = 4;
+                stageDesc = "Shipment successfully delivered to recipient address.";
+                break;
+            case "PENDING":
+            default:
+                currentStage = 1;
+                stageDesc = "Order placed successfully. Awaiting merchant confirmation.";
+                break;
+        }
+
+        JPanel barPanel = new JPanel(new GridBagLayout());
+        barPanel.setBackground(new Color(248, 250, 252));
+        barPanel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(226, 232, 240), 1),
+                new EmptyBorder(8, 12, 8, 12)
+        ));
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.gridy = 0;
+
+        String[] stepNames = {"Placed", "Confirmed", "Shipped", "Delivered"};
+
+        for (int i = 0; i < 4; i++) {
+            int stepNum = i + 1;
+            boolean isCompleted = stepNum < currentStage;
+            boolean isCurrent = stepNum == currentStage;
+
+            JPanel node = new JPanel(new FlowLayout(FlowLayout.CENTER, 4, 0));
+            node.setOpaque(false);
+
+            JLabel circle = new JLabel(isCompleted ? "✓" : String.valueOf(stepNum), SwingConstants.CENTER);
+            circle.setPreferredSize(new Dimension(22, 22));
+            circle.setOpaque(true);
+            circle.setFont(new Font("Segoe UI", Font.BOLD, 11));
+
+            if (isCompleted) {
+                circle.setBackground(new Color(22, 163, 74));
+                circle.setForeground(Color.WHITE);
+            } else if (isCurrent) {
+                circle.setBackground(new Color(37, 99, 235));
+                circle.setForeground(Color.WHITE);
+            } else {
+                circle.setBackground(new Color(226, 232, 240));
+                circle.setForeground(new Color(100, 116, 139));
+            }
+            circle.setBorder(BorderFactory.createLineBorder(circle.getBackground(), 1));
+
+            JLabel label = new JLabel(stepNames[i]);
+            label.setFont(new Font("Segoe UI", isCurrent ? Font.BOLD : Font.PLAIN, 11));
+            label.setForeground(isCurrent ? new Color(15, 23, 42) : (isCompleted ? new Color(22, 163, 74) : new Color(148, 163, 184)));
+
+            node.add(circle);
+            node.add(label);
+
+            gbc.gridx = i * 2;
+            gbc.weightx = 0;
+            barPanel.add(node, gbc);
+
+            if (i < 3) {
+                JSeparator sep = new JSeparator(SwingConstants.HORIZONTAL);
+                sep.setForeground(stepNum < currentStage ? new Color(22, 163, 74) : new Color(203, 213, 225));
+                gbc.gridx = i * 2 + 1;
+                gbc.weightx = 1.0;
+                barPanel.add(sep, gbc);
+            }
+        }
+
+        JPanel footerRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+        footerRow.setOpaque(false);
+        JLabel descLabel = new JLabel("<html><b>Fulfillment Status:</b> " + stageDesc + "</html>");
+        descLabel.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+        descLabel.setForeground(new Color(71, 85, 105));
+        footerRow.add(descLabel);
+
+        stepperCard.add(barPanel, BorderLayout.CENTER);
+        stepperCard.add(footerRow, BorderLayout.SOUTH);
+        return stepperCard;
     }
 
     private JLabel createMetaLabel(String key, String value) {
