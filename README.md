@@ -26,6 +26,7 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
     * `CartDAO`: Full cart persistence (`cart_items` table) with upsert, quantity management, item removal, and total value calculation
     * `ReportDAO`: Core Qveto KPI reporting metrics, executive sales summary, low-stock reorder alerts, customer lifetime spend leaderboard, and view-backed queries
   * Utility & Security: `PasswordUtil` providing SHA-256 hashing compatible with MySQL `SHA2()`
+  * Database Integrity & Automated Verification Suite (`DatabaseIntegrityTest.java` & `test.bat`): Automated 7-stage test harness verifying SHA-256 password hashing, BigDecimal financial precision, inventory stock decrements and cancellation restoration, foreign-key safe-deletion constraints, ReportDAO analytical consistency, live atomic transaction rollback safety, and atomic order-payment commits.
 * **Member 2 (UI, Presentation & Store Management):**
   * Java Swing Authentication Frames (`LoginFrame`) with password visibility toggle (Show/Hide)
   * Customer & Admin Login workflows with input validation and JDBC `UserDAO` authentication
@@ -64,6 +65,9 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
 
 #### Using the One-Click Script (Windows)
 Double-click `run.bat` in the project root to compile and launch the application.
+
+#### Automated Database Integrity & Rollback Tests
+Double-click `test.bat` in the project root (or run `java -cp "bin;<path-to-mysql-connector-j.jar>" com.qveto.ecommerce.util.DatabaseIntegrityTest`) to execute the 7-stage automated verification suite.
 
 #### Using Maven (Recommended)
 ```bash
