@@ -90,6 +90,29 @@ public class ProductStore {
     }
 
     /**
+     * Finds a product by its ID.
+     */
+    public static Product findById(int productId) {
+        if (DBStatusUtil.isDatabaseConnected()) {
+            try {
+                Product dbProduct = new ProductDAO().findById(productId);
+                if (dbProduct != null) {
+                    return dbProduct;
+                }
+            } catch (Throwable t) {
+                System.err.println("[ProductStore] DB findById fallback: " + t.getMessage());
+            }
+        }
+
+        for (Product p : inMemoryProducts) {
+            if (p.getProductId() == productId) {
+                return p;
+            }
+        }
+        return null;
+    }
+
+    /**
      * Returns products currently at or below their low stock threshold.
      */
     public static List<Product> getLowStockProducts() {
@@ -178,6 +201,14 @@ public class ProductStore {
             }
         }
         return dbSuccess;
+    }
+
+    /**
+     * Restocks a product by adding the specified positive quantity.
+     */
+    public static boolean restockProduct(int productId, int quantity) {
+        if (quantity <= 0) return false;
+        return adjustStock(productId, quantity);
     }
 
     /**

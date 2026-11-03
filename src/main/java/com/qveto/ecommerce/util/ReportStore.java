@@ -2,6 +2,7 @@ package com.qveto.ecommerce.util;
 
 import com.qveto.ecommerce.dao.ReportDAO;
 import com.qveto.ecommerce.dao.ReportDAO.CustomerSpendStat;
+import com.qveto.ecommerce.dao.ReportDAO.LowStockAlert;
 import com.qveto.ecommerce.dao.ReportDAO.ProductSalesStat;
 import com.qveto.ecommerce.dao.ReportDAO.SalesExecutiveSummary;
 import com.qveto.ecommerce.model.Order;
@@ -125,6 +126,41 @@ public class ReportStore {
             }
         }
         return ProductStore.getLowStockProducts().size();
+    }
+
+    /**
+     * Retrieves detailed low stock alert list utilizing view_low_stock_alerts when connected,
+     * or calculating deficits from in-memory catalog in offline mode.
+     */
+    public static List<LowStockAlert> getDetailedLowStockAlerts() {
+        if (DBStatusUtil.isDatabaseConnected()) {
+            try {
+                List<LowStockAlert> dbAlerts = new ReportDAO().getDetailedLowStockAlerts();
+                if (dbAlerts != null && !dbAlerts.isEmpty()) {
+                    return dbAlerts;
+                }
+            } catch (Throwable t) {
+                System.err.println("[ReportStore] DB getDetailedLowStockAlerts fallback: " + t.getMessage());
+            }
+        }
+
+        List<LowStockAlert> alerts = new ArrayList<>();
+        for (Product p : ProductStore.getAllProducts()) {
+            if (p.getStockQuantity() <= p.getLowStockThreshold()) {
+                int below = Math.max(0, p.getLowStockThreshold() - p.getStockQuantity());
+                String status = p.getStockQuantity() == 0 ? "OUT_OF_STOCK" : "LOW_STOCK";
+                alerts.add(new LowStockAlert(
+                        p.getProductId(),
+                        p.getProductName(),
+                        p.getCategory(),
+                        p.getStockQuantity(),
+                        p.getLowStockThreshold(),
+                        status,
+                        below
+                ));
+            }
+        }
+        return alerts;
     }
 
     /**

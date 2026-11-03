@@ -31,7 +31,7 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
   * Customer & Admin Login workflows with input validation and JDBC `UserDAO` authentication
   * Customer Registration with form validation, email uniqueness checks, and database persistence
   * Application Dashboard Shell & Navigation (`DashboardFrame`)
-  * Product Discovery: Live keyword search, dynamic category filtering, and Product Details Modal (`ProductDetailsDialog`)
+  * Product Discovery: Live keyword search, dynamic category filtering, multi-criteria sorting (Price Low-to-High, Price High-to-Low, Name A-Z, Highest Stock), quick in-stock availability toggle, and Product Details Modal (`ProductDetailsDialog`)
   * Interactive Shopping Cart with dynamic badge, quantity controls, cart persistence (`CartStore` & `CartDAO`), and checkout confirmation
   * Simulated Payment Gateway & Settlement Integration (`PaymentStore` & `PaymentDAO`):
     * Multi-channel checkout supporting Cash on Delivery (COD), UPI (Simulated), Credit/Debit Card, and Net Banking
@@ -40,9 +40,16 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
   * Automated Inventory Stock Synchronization: Order checkout automatically reserves inventory (`ProductStore.adjustStock`), and order cancellations automatically replenish stock
   * Customer Profile Management (View, Edit Contact Info, Change Password Dialogs synced with MySQL, and Lifetime Purchase Summary)
   * Customer Order History Screen with Status Filtering & Order Cancellation
-  * Order Details & Invoice Modal with Official Receipt Export (`OrderDetailsDialog`): Real-time payment settlement badge, transaction reference ID, and formatted text invoice export
+  * Order Details & Invoice Modal with Official Receipt Export (`OrderDetailsDialog`):
+    * Interactive **Order Fulfillment Tracking Stepper**: Visual milestone progress bar (`[1. Placed] -> [2. Confirmed] -> [3. Shipped] -> [4. Delivered]`) indicating real-time order lifecycle stage, completed step checkmarks, active tracking status, and voided cancellation alert styling
+    * Real-time payment settlement badge, transaction reference ID, and formatted text invoice export
   * Admin Product Management: Add new product with validation, Edit & Restock inventory dialog (`EditProductDialog`) with quick restock actions, and product deletion
-  * Admin Low Stock Alerts: Real-time low-stock filtering and colored inventory warning badges (`[LOW STOCK]`, `[OUT OF STOCK]`)
+  * Admin Low Stock Alerts & Inventory Procurement Hub (`LowStockProcurementDialog` & `ReportStore`):
+    * Dedicated modal dialog for inspecting SKUs at or below low-stock threshold utilizing `view_low_stock_alerts`
+    * Real-time deficit metrics: Total Low-Stock Exposure, Out-of-Stock SKUs, and Total Unit Deficits
+    * 1-Click single-SKU quick restock with configurable quantity spinner
+    * ⚡ Batch Procurement replenishment: Rapidly restores all deficit SKUs to safe inventory levels with a single confirmation
+    * Integrated launch points from both Admin Inventory Catalog toolbar (`📦 Restock Hub`) and Executive Reports KPI deck (`📦 Restock Procurement`)
   * Admin Order Fulfillment Management: Inspect order details, filter by status, and advance order status (`PENDING` -> `CONFIRMED` -> `SHIPPED` -> `DELIVERED`) with automated payment settlement
   * Admin User Management (`createAdminUsersPanel`): Live user directory, real-time KPI metrics, search by name/email, role filtering, User Dossier Modal (`UserDetailsDialog` with Customer Lifetime Value calculation), and account deactivation with self-deletion protection
   * Admin Category Management (`CategoryManagementDialog` & `CategoryStore`): Interactive category manager dialog allowing adding categories, renaming, deleting with product safety check, and reviewing product counts
