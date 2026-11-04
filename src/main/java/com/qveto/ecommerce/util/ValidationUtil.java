@@ -60,6 +60,15 @@ public class ValidationUtil {
         );
     }
 
+    public static void showInfo(Component parent, String message, String title) {
+        JOptionPane.showMessageDialog(
+                parent,
+                "<html><body style='width: 280px; font-family: Segoe UI, sans-serif;'>" + message + "</body></html>",
+                title,
+                JOptionPane.INFORMATION_MESSAGE
+        );
+    }
+
     public static void showWarning(Component parent, String message, String title) {
         JOptionPane.showMessageDialog(
                 parent,

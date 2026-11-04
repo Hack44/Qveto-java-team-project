@@ -99,6 +99,64 @@ public class ReportStore {
     }
 
     /**
+     * Filters orders within an inclusive date range [startDate, endDate].
+     */
+    public static List<Order> getOrdersBetween(String startDate, String endDate) {
+        List<Order> all = OrderStore.getAllOrders();
+        if ((startDate == null || startDate.isEmpty()) && (endDate == null || endDate.isEmpty())) {
+            return all;
+        }
+
+        List<Order> filtered = new ArrayList<>();
+        for (Order o : all) {
+            String date = o.getOrderDate();
+            if (date == null) continue;
+            boolean afterStart = (startDate == null || startDate.isEmpty()) || date.compareTo(startDate) >= 0;
+            boolean beforeEnd = (endDate == null || endDate.isEmpty()) || date.compareTo(endDate) <= 0;
+            if (afterStart && beforeEnd) {
+                filtered.add(o);
+            }
+        }
+        return filtered;
+    }
+
+    public static double getTotalRevenueBetween(String startDate, String endDate) {
+        double rev = 0.0;
+        for (Order o : getOrdersBetween(startDate, endDate)) {
+            if (!"CANCELLED".equalsIgnoreCase(o.getOrderStatus())) {
+                rev += o.getTotalAmount();
+            }
+        }
+        return rev;
+    }
+
+    public static int getTotalOrdersBetween(String startDate, String endDate) {
+        return getOrdersBetween(startDate, endDate).size();
+    }
+
+    public static double getAverageOrderValueBetween(String startDate, String endDate) {
+        List<Order> list = getOrdersBetween(startDate, endDate);
+        long active = list.stream().filter(o -> !"CANCELLED".equalsIgnoreCase(o.getOrderStatus())).count();
+        double rev = getTotalRevenueBetween(startDate, endDate);
+        return active > 0 ? (rev / active) : 0.0;
+    }
+
+    public static Map<String, Integer> getOrderStatusDistributionBetween(String startDate, String endDate) {
+        Map<String, Integer> dist = new LinkedHashMap<>();
+        dist.put("PENDING", 0);
+        dist.put("CONFIRMED", 0);
+        dist.put("SHIPPED", 0);
+        dist.put("DELIVERED", 0);
+        dist.put("CANCELLED", 0);
+
+        for (Order o : getOrdersBetween(startDate, endDate)) {
+            String s = o.getOrderStatus().toUpperCase();
+            dist.put(s, dist.getOrDefault(s, 0) + 1);
+        }
+        return dist;
+    }
+
+    /**
      * Returns total registered customer count.
      */
     public static int getTotalCustomers() {

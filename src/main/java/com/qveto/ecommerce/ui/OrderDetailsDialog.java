@@ -4,6 +4,7 @@ import com.qveto.ecommerce.model.Order;
 import com.qveto.ecommerce.model.OrderItem;
 import com.qveto.ecommerce.model.Payment;
 import com.qveto.ecommerce.util.PaymentStore;
+import com.qveto.ecommerce.util.PdfInvoiceGenerator;
 import com.qveto.ecommerce.util.ValidationUtil;
 
 import javax.swing.*;
@@ -169,6 +170,14 @@ public class OrderDetailsDialog extends JDialog {
         actionPanel.setBackground(new Color(248, 250, 252));
         actionPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(226, 232, 240)));
 
+        JButton exportPdfBtn = new JButton("📄 Download PDF (.pdf)");
+        exportPdfBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        exportPdfBtn.setBackground(new Color(220, 38, 38));
+        exportPdfBtn.setForeground(Color.WHITE);
+        exportPdfBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        exportPdfBtn.addActionListener(e -> handleExportPdfInvoice(order, payment, customerAddress));
+        actionPanel.add(exportPdfBtn);
+
         JButton exportBtn = new JButton("Export Invoice (.txt)");
         exportBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
         exportBtn.setBackground(new Color(37, 99, 235));
@@ -311,6 +320,22 @@ public class OrderDetailsDialog extends JDialog {
         JLabel label = new JLabel("<html><b>" + key + "</b> " + value + "</html>");
         label.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         return label;
+    }
+
+    private void handleExportPdfInvoice(Order order, Payment payment, String customerAddress) {
+        String fileName = "Invoice_" + order.getOrderNumber() + ".pdf";
+        File file = new File(fileName);
+
+        try {
+            PdfInvoiceGenerator.generateInvoicePdf(order, payment, customerAddress, file);
+            ValidationUtil.showSuccess(this,
+                    "Branded PDF invoice successfully generated at:<br/><b>" + file.getAbsolutePath() + "</b>",
+                    "PDF Invoice Ready");
+        } catch (IOException ex) {
+            ValidationUtil.showError(this,
+                    "Failed to generate PDF invoice: " + ex.getMessage(),
+                    "Export Error");
+        }
     }
 
     private void handleExportInvoice(Order order, Payment payment, String customerAddress) {

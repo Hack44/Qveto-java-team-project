@@ -388,7 +388,7 @@ public class DashboardFrame extends JFrame {
         Product selected = getSelectedCustomerProduct();
         if (selected == null) return;
 
-        ProductDetailsDialog dialog = new ProductDetailsDialog(this, selected, true, p -> {
+        ProductDetailsDialog dialog = new ProductDetailsDialog(this, selected, currentUser, p -> {
             addProductToCart(p.getProductId(), p.getProductName(), p.getPriceAsDouble());
         });
         dialog.setVisible(true);
@@ -1240,6 +1240,14 @@ public class DashboardFrame extends JFrame {
         JPanel actionRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 5));
         actionRow.setBackground(Color.WHITE);
 
+        JButton rateBtn = new JButton("★ Rate & Review");
+        rateBtn.setBackground(new Color(245, 158, 11));
+        rateBtn.setForeground(Color.WHITE);
+        rateBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        rateBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        rateBtn.addActionListener(e -> handleReviewDeliveredOrder());
+        actionRow.add(rateBtn);
+
         JButton viewDetailsBtn = new JButton("View Order Details / Invoice");
         viewDetailsBtn.setBackground(new Color(15, 23, 42));
         viewDetailsBtn.setForeground(Color.WHITE);
@@ -1349,6 +1357,55 @@ public class DashboardFrame extends JFrame {
                             + "Inventory stock has been replenished and payment marked as REFUNDED.",
                     "Order Cancelled");
         }
+    }
+
+    private void handleReviewDeliveredOrder() {
+        Order selected = getSelectedOrder();
+        if (selected == null) return;
+
+        if (!"DELIVERED".equalsIgnoreCase(selected.getOrderStatus())) {
+            ValidationUtil.showInfo(this,
+                    "Verified customer reviews can only be submitted for delivered orders (Current status: " + selected.getOrderStatus() + ").",
+                    "Order In Transit");
+            return;
+        }
+
+        List<OrderItem> items = selected.getItems();
+        if (items == null || items.isEmpty()) {
+            ValidationUtil.showWarning(this, "No products found in this order to review.", "No Products");
+            return;
+        }
+
+        OrderItem targetItem = items.get(0);
+        if (items.size() > 1) {
+            String[] itemNames = items.stream().map(OrderItem::getProductName).toArray(String[]::new);
+            String picked = (String) JOptionPane.showInputDialog(
+                    this,
+                    "Select which purchased product you would like to review:",
+                    "Choose Product to Review",
+                    JOptionPane.QUESTION_MESSAGE,
+                    null,
+                    itemNames,
+                    itemNames[0]
+            );
+            if (picked == null) return;
+            for (OrderItem oi : items) {
+                if (oi.getProductName().equals(picked)) {
+                    targetItem = oi;
+                    break;
+                }
+            }
+        }
+
+        Product p = ProductStore.findById(targetItem.getProductId());
+        if (p == null) {
+            p = new Product(targetItem.getProductId(), targetItem.getProductName(), "Electronics", "Purchased item", targetItem.getUnitPrice(), 10);
+        }
+
+        ProductReviewDialog dialog = new ProductReviewDialog(this, p, currentUser, () -> {
+            ValidationUtil.showSuccess(this, "Thank you! Your verified review has been published.", "Review Submitted");
+        });
+        dialog.setVisible(true);
     }
 
     // ==========================================
@@ -2223,6 +2280,74 @@ public class DashboardFrame extends JFrame {
         headerRow.add(actionBtnRow, BorderLayout.EAST);
         northPanel.add(headerRow, BorderLayout.NORTH);
 
+        // Date Filter Toolbar
+        JPanel filterToolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 4));
+        filterToolbar.setBackground(new Color(248, 250, 252));
+        filterToolbar.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(226, 232, 240)),
+                new EmptyBorder(4, 10, 4, 10)
+        ));
+
+        JLabel filterLabel = new JLabel("📅 Date Range Preset:");
+        filterLabel.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        filterLabel.setForeground(new Color(30, 41, 59));
+        filterToolbar.add(filterLabel);
+
+        JComboBox<String> datePresetCombo = new JComboBox<>(new String[]{"All Time", "Last 7 Days", "Last 30 Days", "This Month"});
+        datePresetCombo.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        filterToolbar.add(datePresetCombo);
+
+        filterToolbar.add(new JLabel("From (YYYY-MM-DD):"));
+        JTextField fromDateField = new JTextField(9);
+        fromDateField.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        filterToolbar.add(fromDateField);
+
+        filterToolbar.add(new JLabel("To (YYYY-MM-DD):"));
+        JTextField toDateField = new JTextField(9);
+        toDateField.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        filterToolbar.add(toDateField);
+
+        datePresetCombo.addActionListener(e -> {
+            String sel = (String) datePresetCombo.getSelectedItem();
+            LocalDate today = LocalDate.now();
+            if ("All Time".equals(sel)) {
+                fromDateField.setText("");
+                toDateField.setText("");
+            } else if ("Last 7 Days".equals(sel)) {
+                fromDateField.setText(today.minusDays(7).toString());
+                toDateField.setText(today.toString());
+            } else if ("Last 30 Days".equals(sel)) {
+                fromDateField.setText(today.minusDays(30).toString());
+                toDateField.setText(today.toString());
+            } else if ("This Month".equals(sel)) {
+                fromDateField.setText(today.withDayOfMonth(1).toString());
+                toDateField.setText(today.toString());
+            }
+        });
+
+        JButton applyFilterBtn = new JButton("Filter Analytics");
+        applyFilterBtn.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        applyFilterBtn.setBackground(new Color(37, 99, 235));
+        applyFilterBtn.setForeground(Color.WHITE);
+        applyFilterBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        applyFilterBtn.addActionListener(e -> {
+            String from = fromDateField.getText().trim();
+            String to = toDateField.getText().trim();
+            refreshAdminReportsPanel(from, to);
+        });
+        filterToolbar.add(applyFilterBtn);
+
+        JButton resetFilterBtn = new JButton("Reset");
+        resetFilterBtn.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+        resetFilterBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        resetFilterBtn.addActionListener(e -> {
+            datePresetCombo.setSelectedIndex(0);
+            fromDateField.setText("");
+            toDateField.setText("");
+            refreshAdminReportsPanel();
+        });
+        filterToolbar.add(resetFilterBtn);
+
         // KPI Deck (6 cards: 2 rows x 3 columns)
         JPanel kpiGrid = new JPanel(new GridLayout(2, 3, 12, 8));
         kpiGrid.setBackground(Color.WHITE);
@@ -2242,7 +2367,12 @@ public class DashboardFrame extends JFrame {
         kpiGrid.add(createKpiCard("Active Customers", kpiTotalCustomersVal, new Color(139, 92, 246)));
         kpiGrid.add(createKpiCard("Low Stock Exposure", kpiLowStockVal, new Color(239, 68, 68)));
 
-        northPanel.add(kpiGrid, BorderLayout.SOUTH);
+        JPanel controlsStack = new JPanel(new BorderLayout(0, 8));
+        controlsStack.setBackground(Color.WHITE);
+        controlsStack.add(filterToolbar, BorderLayout.NORTH);
+        controlsStack.add(kpiGrid, BorderLayout.CENTER);
+
+        northPanel.add(controlsStack, BorderLayout.CENTER);
         root.add(northPanel, BorderLayout.NORTH);
 
         // Center Split Panel (2 Columns)
@@ -2392,12 +2522,23 @@ public class DashboardFrame extends JFrame {
     }
 
     public void refreshAdminReportsPanel() {
+        refreshAdminReportsPanel(null, null);
+    }
+
+    public void refreshAdminReportsPanel(String fromDate, String toDate) {
         if (kpiTotalOrdersVal == null) return;
 
-        double revenue = ReportStore.getTotalRevenue();
-        double collected = ReportStore.getTotalCollectedRevenue();
-        int orders = ReportStore.getTotalOrders();
-        double aov = ReportStore.getAverageOrderValue();
+        boolean hasDateFilter = (fromDate != null && !fromDate.trim().isEmpty())
+                || (toDate != null && !toDate.trim().isEmpty());
+
+        double revenue = hasDateFilter ? ReportStore.getTotalRevenueBetween(fromDate, toDate) : ReportStore.getTotalRevenue();
+        int orders = hasDateFilter ? ReportStore.getTotalOrdersBetween(fromDate, toDate) : ReportStore.getTotalOrders();
+        double aov = hasDateFilter ? ReportStore.getAverageOrderValueBetween(fromDate, toDate) : ReportStore.getAverageOrderValue();
+        double collected = hasDateFilter ?
+                ReportStore.getOrdersBetween(fromDate, toDate).stream()
+                        .filter(o -> "DELIVERED".equalsIgnoreCase(o.getOrderStatus()) || "SHIPPED".equalsIgnoreCase(o.getOrderStatus()))
+                        .mapToDouble(Order::getTotalAmount).sum()
+                : ReportStore.getTotalCollectedRevenue();
         int customers = ReportStore.getTotalCustomers();
         int lowStock = ReportStore.getLowStockExposureCount();
 
@@ -2431,7 +2572,9 @@ public class DashboardFrame extends JFrame {
         // Status Distribution
         if (orderStatusDistTableModel != null) {
             orderStatusDistTableModel.setRowCount(0);
-            Map<String, Integer> statusDist = ReportStore.getOrderStatusDistribution();
+            Map<String, Integer> statusDist = hasDateFilter ?
+                    ReportStore.getOrderStatusDistributionBetween(fromDate, toDate) :
+                    ReportStore.getOrderStatusDistribution();
             for (Map.Entry<String, Integer> e : statusDist.entrySet()) {
                 double pct = orders > 0 ? (e.getValue() * 100.0 / orders) : 0.0;
                 orderStatusDistTableModel.addRow(new Object[]{
