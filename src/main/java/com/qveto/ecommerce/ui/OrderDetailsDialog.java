@@ -136,9 +136,25 @@ public class OrderDetailsDialog extends JDialog {
         contentPanel.add(Box.createVerticalStrut(14));
 
         // Total Summary Box
-        JPanel summaryBox = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JPanel summaryBox = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
         summaryBox.setBackground(Color.WHITE);
         summaryBox.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        double itemsSum = 0;
+        if (order.getItems() != null && !order.getItems().isEmpty()) {
+            for (OrderItem it : order.getItems()) {
+                itemsSum += it.getSubtotal();
+            }
+        } else {
+            itemsSum = order.getTotalAmount();
+        }
+        double estimatedTax = itemsSum * 0.05;
+        double promoSavings = (itemsSum + estimatedTax) - order.getTotalAmount();
+        if (promoSavings > 0.5) {
+            JLabel savingsLabel = new JLabel(String.format("<html><font color='#16a34a'><b>Promotional Savings: -$%.2f</b></font> &nbsp;|&nbsp;</html>", promoSavings));
+            savingsLabel.setFont(new Font("Segoe UI", Font.BOLD, 13));
+            summaryBox.add(savingsLabel);
+        }
 
         JLabel totalLabel = new JLabel(String.format("Total Amount: $%.2f", order.getTotalAmount()));
         totalLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
@@ -318,16 +334,27 @@ public class OrderDetailsDialog extends JDialog {
             writer.write(String.format("%-30s %-6s %-12s %-10s\n", "Item Description", "Qty", "Unit Price", "Subtotal"));
             writer.write("--------------------------------------------------------------\n");
 
+            double itemsSubtotal = 0;
             if (order.getItems() != null && !order.getItems().isEmpty()) {
                 for (OrderItem item : order.getItems()) {
+                    itemsSubtotal += item.getSubtotal();
                     writer.write(String.format("%-30s %-6d $%-11.2f $%-9.2f\n",
                             item.getProductName(), item.getQuantity(), item.getUnitPrice(), item.getSubtotal()));
                 }
             } else {
+                itemsSubtotal = order.getTotalAmount();
                 writer.write(String.format("%-30s %-6d $%-11.2f $%-9.2f\n",
                         "Standard E-Commerce Items Package", 1, order.getTotalAmount(), order.getTotalAmount()));
             }
 
+            writer.write("--------------------------------------------------------------\n");
+            double taxAmount = itemsSubtotal * 0.05;
+            double savingsAmount = (itemsSubtotal + taxAmount) - order.getTotalAmount();
+            writer.write(String.format("Items Subtotal:   $%.2f\n", itemsSubtotal));
+            if (savingsAmount > 0.5) {
+                writer.write(String.format("Promo Savings:   -$%.2f\n", savingsAmount));
+            }
+            writer.write(String.format("Estimated Tax:    $%.2f\n", taxAmount));
             writer.write("--------------------------------------------------------------\n");
             writer.write(String.format("GRAND TOTAL:      $%.2f\n", order.getTotalAmount()));
             writer.write("==============================================================\n");

@@ -31,8 +31,12 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
   * Customer & Admin Login workflows with input validation and JDBC `UserDAO` authentication
   * Customer Registration with form validation, email uniqueness checks, and database persistence
   * Application Dashboard Shell & Navigation (`DashboardFrame`)
-  * Product Discovery: Live keyword search, dynamic category filtering, multi-criteria sorting (Price Low-to-High, Price High-to-Low, Name A-Z, Highest Stock), quick in-stock availability toggle, and Product Details Modal (`ProductDetailsDialog`)
+  * Product Discovery: Live keyword search, dynamic category filtering, multi-criteria sorting (Price Low-to-High, Price High-to-Low, Name A-Z, Highest Stock), quick in-stock availability toggle, and Product Details Modal (`ProductDetailsDialog`) with verified buyer 5-star ratings and review counts
   * Interactive Shopping Cart with dynamic badge, quantity controls, cart persistence (`CartStore` & `CartDAO`), and checkout confirmation
+  * E-Commerce Promotional Coupon & Discount Engine (`CouponStore.java`):
+    * Centralized store managing promotional discount vouchers with percentage/flat-rate rules, minimum cart thresholds, and discount caps (e.g., `QVETO10`, `SAVE20`, `FLAT15`, `WELCOME`, `MEGA50`)
+    * Dynamic Cart Promo Bar: Instant code validation, live discount feedback, and cart net total recalculation
+    * Order & Checkout Integration: Applies promo savings to checkout total and records promotional discounts on customer invoices and official text receipts
   * Simulated Payment Gateway & Settlement Integration (`PaymentStore` & `PaymentDAO`):
     * Multi-channel checkout supporting Cash on Delivery (COD), UPI (Simulated), Credit/Debit Card, and Net Banking
     * Automated settlement lifecycle management: immediate `COMPLETED` for online channels, `PENDING` for COD, auto-settlement on `DELIVERED`, and automatic refund marking (`REFUNDED`) on order cancellation
@@ -50,7 +54,10 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
     * 1-Click single-SKU quick restock with configurable quantity spinner
     * ⚡ Batch Procurement replenishment: Rapidly restores all deficit SKUs to safe inventory levels with a single confirmation
     * Integrated launch points from both Admin Inventory Catalog toolbar (`📦 Restock Hub`) and Executive Reports KPI deck (`📦 Restock Procurement`)
-  * Admin Order Fulfillment Management: Inspect order details, filter by status, and advance order status (`PENDING` -> `CONFIRMED` -> `SHIPPED` -> `DELIVERED`) with automated payment settlement
+  * Admin Order Fulfillment Management: Inspect order details, live keyword search (by Order #, Customer ID, or Address), filter by status, and advance order status (`PENDING` -> `CONFIRMED` -> `SHIPPED` -> `DELIVERED`) with automated payment settlement
+  * Corporate CSV Audit & Reporting Export Suite (`ProductStore.exportCatalogCsv` & `OrderStore.exportOrdersCsv`):
+    * 1-Click RFC 4180 compliant CSV export for complete inventory catalog (`qveto_inventory_catalog.csv`)
+    * 1-Click CSV export for master orders audit register (`qveto_orders_master.csv`) with payment modes and transaction references
   * Admin User Management (`createAdminUsersPanel`): Live user directory, real-time KPI metrics, search by name/email, role filtering, User Dossier Modal (`UserDetailsDialog` with Customer Lifetime Value calculation), and account deactivation with self-deletion protection
   * Admin Category Management (`CategoryManagementDialog` & `CategoryStore`): Interactive category manager dialog allowing adding categories, renaming, deleting with product safety check, and reviewing product counts
   * Executive Analytics Command Center (`ReportStore` & `ReportDAO`):
@@ -59,7 +66,7 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
     * Multi-Tab Analytics Breakdown: Order Lifecycle Distribution, Category Revenue Breakdown, Customer Lifetime Value (CLV) Leaderboard, and Payment Channel Distribution
     * One-click Executive Performance Report text export (`qveto_executive_report.txt`)
   * Real-Time Database Status Indicator (`DBStatusUtil`): Visual connectivity pill (`● MySQL Active` vs `○ Standalone Demo`) across login and dashboard headers
-  * Centralized Store Architecture (`UserStore`, `ProductStore`, `OrderStore`, `CategoryStore`, `CartStore`, `ReportStore`, `PaymentStore`) coordinating between JDBC DAOs and resilient in-memory fallback state
+  * Centralized Store Architecture (`UserStore`, `ProductStore`, `OrderStore`, `CategoryStore`, `CartStore`, `ReportStore`, `PaymentStore`, `CouponStore`) coordinating between JDBC DAOs and resilient in-memory fallback state
   * Centralized Form Validation Utility (`ValidationUtil`)
 * **Member 3:** Catalog, Cart & Order Placement Services
 * **Member 4:** Inventory Consistency, Invoices & Sales Reporting

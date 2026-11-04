@@ -3,6 +3,9 @@ package com.qveto.ecommerce.util;
 import com.qveto.ecommerce.dao.ProductDAO;
 import com.qveto.ecommerce.model.Product;
 
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
@@ -241,5 +244,31 @@ public class ProductStore {
             }
         }
         return inMemoryProducts.size();
+    }
+
+    /**
+     * Exports all catalog products to an RFC 4180 compliant CSV file for corporate spreadsheet auditing.
+     *
+     * @param targetFile destination CSV file
+     * @throws IOException if writing fails
+     */
+    public static void exportCatalogCsv(File targetFile) throws IOException {
+        List<Product> products = getAllProducts();
+        try (FileWriter writer = new FileWriter(targetFile)) {
+            writer.write("Product ID,Product Name,Category,Unit Price ($),Stock Quantity,Threshold,Status\n");
+            for (Product p : products) {
+                String safeName = p.getProductName().replace("\"", "\"\"");
+                String safeCat = p.getCategory().replace("\"", "\"\"");
+                writer.write(String.format("%d,\"%s\",\"%s\",%.2f,%d,%d,\"%s\"\n",
+                        p.getProductId(),
+                        safeName,
+                        safeCat,
+                        p.getPriceAsDouble(),
+                        p.getStockQuantity(),
+                        p.getLowStockThreshold(),
+                        p.getStockStatus()
+                ));
+            }
+        }
     }
 }

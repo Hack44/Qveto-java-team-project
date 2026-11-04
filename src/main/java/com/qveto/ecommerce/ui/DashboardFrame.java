@@ -9,6 +9,7 @@ import com.qveto.ecommerce.model.Product;
 import com.qveto.ecommerce.model.User;
 import com.qveto.ecommerce.util.CartStore;
 import com.qveto.ecommerce.util.CategoryStore;
+import com.qveto.ecommerce.util.CouponStore;
 import com.qveto.ecommerce.util.DBStatusUtil;
 import com.qveto.ecommerce.util.OrderStore;
 import com.qveto.ecommerce.util.PaymentStore;
@@ -65,6 +66,12 @@ public class DashboardFrame extends JFrame {
     private JComboBox<String> customerSortCombo;
     private JCheckBox customerInStockOnlyCheck;
 
+    // Customer Cart Promo components
+    private JTextField promoCodeField;
+    private JLabel promoStatusLabel;
+    private CouponStore.Coupon appliedCoupon = null;
+    private double appliedDiscount = 0.0;
+
     // Admin Catalog UI components
     private DefaultTableModel adminCatalogTableModel;
     private JTable adminCatalogTable;
@@ -74,6 +81,7 @@ public class DashboardFrame extends JFrame {
     private DefaultTableModel adminOrdersTableModel;
     private JTable adminOrdersTable;
     private JComboBox<String> adminOrderStatusFilterCombo;
+    private JTextField adminOrderSearchField;
 
     // Admin User Management UI components
     private DefaultTableModel adminUsersTableModel;
@@ -484,9 +492,58 @@ public class DashboardFrame extends JFrame {
             activePanel.add(scrollPane, BorderLayout.CENTER);
 
             // Right & Bottom Summary Bar
-            JPanel footerPanel = new JPanel(new BorderLayout());
+            JPanel footerPanel = new JPanel(new BorderLayout(0, 10));
             footerPanel.setBackground(Color.WHITE);
             footerPanel.setBorder(new EmptyBorder(10, 0, 0, 0));
+
+            // Promotional Coupon Panel
+            JPanel promoPanel = new JPanel(new BorderLayout());
+            promoPanel.setBackground(new Color(248, 250, 252));
+            promoPanel.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createLineBorder(new Color(226, 232, 240), 1),
+                    new EmptyBorder(8, 12, 8, 12)
+            ));
+
+            JPanel promoLeft = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+            promoLeft.setOpaque(false);
+            JLabel promoIcon = new JLabel("🏷️");
+            JLabel promoHint = new JLabel("<html><b>Promotions:</b> Apply <code>QVETO10</code> (10% off), <code>SAVE20</code> (20% off), <code>FLAT15</code> ($15 off), or <code>WELCOME</code></html>");
+            promoHint.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+            promoHint.setForeground(new Color(71, 85, 105));
+            promoLeft.add(promoIcon);
+            promoLeft.add(promoHint);
+            promoPanel.add(promoLeft, BorderLayout.WEST);
+
+            JPanel promoRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+            promoRight.setOpaque(false);
+
+            promoCodeField = new JTextField(8);
+            promoCodeField.setFont(new Font("Segoe UI", Font.BOLD, 12));
+            if (appliedCoupon != null) {
+                promoCodeField.setText(appliedCoupon.getCode());
+            }
+            promoCodeField.addActionListener(e -> handleApplyPromoCode());
+            promoRight.add(promoCodeField);
+
+            JButton applyPromoBtn = new JButton("Apply Coupon");
+            applyPromoBtn.setFont(new Font("Segoe UI", Font.BOLD, 11));
+            applyPromoBtn.setBackground(new Color(37, 99, 235));
+            applyPromoBtn.setForeground(Color.WHITE);
+            applyPromoBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+            applyPromoBtn.addActionListener(e -> handleApplyPromoCode());
+            promoRight.add(applyPromoBtn);
+
+            JButton removePromoBtn = new JButton("Remove");
+            removePromoBtn.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+            removePromoBtn.addActionListener(e -> handleRemovePromoCode());
+            promoRight.add(removePromoBtn);
+
+            promoPanel.add(promoRight, BorderLayout.EAST);
+            footerPanel.add(promoPanel, BorderLayout.NORTH);
+
+            // Bottom action row: Quantity adjust on left, summary/checkout on right
+            JPanel actionRow = new JPanel(new BorderLayout());
+            actionRow.setBackground(Color.WHITE);
 
             // Quantity adjust buttons on left
             JPanel qtyControls = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
@@ -513,15 +570,31 @@ public class DashboardFrame extends JFrame {
             qtyControls.add(minusBtn);
             qtyControls.add(removeBtn);
             qtyControls.add(clearBtn);
-            footerPanel.add(qtyControls, BorderLayout.WEST);
+            actionRow.add(qtyControls, BorderLayout.WEST);
 
             // Summary and checkout on right
             JPanel checkoutRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 15, 0));
             checkoutRow.setBackground(Color.WHITE);
 
-            double total = calculateCartTotal();
-            cartTotalSummaryLabel = new JLabel(String.format("Cart Total: $%.2f", total));
-            cartTotalSummaryLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
+            double subtotal = calculateCartTotal();
+            if (appliedCoupon != null) {
+                CouponStore.CouponResult res = CouponStore.validateAndApply(appliedCoupon.getCode(), subtotal);
+                if (res.isValid()) {
+                    appliedDiscount = res.getDiscountAmount();
+                } else {
+                    appliedCoupon = null;
+                    appliedDiscount = 0.0;
+                }
+            }
+
+            if (appliedCoupon != null && appliedDiscount > 0) {
+                double discounted = Math.max(0, subtotal - appliedDiscount);
+                cartTotalSummaryLabel = new JLabel(String.format("<html>Subtotal: $%.2f &nbsp;|&nbsp; <font color='#16a34a'><b>Discount (%s): -$%.2f</b></font> &nbsp;|&nbsp; <b>Net: $%.2f</b></html>",
+                        subtotal, appliedCoupon.getCode(), appliedDiscount, discounted));
+            } else {
+                cartTotalSummaryLabel = new JLabel(String.format("Cart Total: $%.2f", subtotal));
+            }
+            cartTotalSummaryLabel.setFont(new Font("Segoe UI", Font.BOLD, 15));
             cartTotalSummaryLabel.setForeground(new Color(15, 23, 42));
 
             JButton checkoutBtn = new JButton("Proceed to Checkout");
@@ -533,8 +606,9 @@ public class DashboardFrame extends JFrame {
 
             checkoutRow.add(cartTotalSummaryLabel);
             checkoutRow.add(checkoutBtn);
-            footerPanel.add(checkoutRow, BorderLayout.EAST);
+            actionRow.add(checkoutRow, BorderLayout.EAST);
 
+            footerPanel.add(actionRow, BorderLayout.SOUTH);
             activePanel.add(footerPanel, BorderLayout.SOUTH);
             cartRootPanel.add(activePanel, BorderLayout.CENTER);
         }
@@ -594,9 +668,36 @@ public class DashboardFrame extends JFrame {
         if (ValidationUtil.showConfirm(this, "Are you sure you want to clear all items from your cart?", "Clear Cart")) {
             CartStore.clearCart(currentUser.getUserId());
             shoppingCart.clear();
+            appliedCoupon = null;
+            appliedDiscount = 0.0;
             updateCartBadge();
             renderCartContent();
         }
+    }
+
+    private void handleApplyPromoCode() {
+        if (promoCodeField == null) return;
+        String code = promoCodeField.getText().trim();
+        double subtotal = calculateCartTotal();
+        CouponStore.CouponResult res = CouponStore.validateAndApply(code, subtotal);
+        if (res.isValid()) {
+            appliedCoupon = res.getCoupon();
+            appliedDiscount = res.getDiscountAmount();
+            ValidationUtil.showSuccess(this, res.getMessage(), "Coupon Applied");
+            renderCartContent();
+        } else {
+            ValidationUtil.showWarning(this, res.getMessage(), "Invalid Coupon");
+        }
+    }
+
+    private void handleRemovePromoCode() {
+        appliedCoupon = null;
+        appliedDiscount = 0.0;
+        if (promoCodeField != null) {
+            promoCodeField.setText("");
+        }
+        renderCartContent();
+        ValidationUtil.showSuccess(this, "Coupon discount removed from cart.", "Coupon Cleared");
     }
 
     private double calculateCartTotal() {
@@ -648,10 +749,21 @@ public class DashboardFrame extends JFrame {
 
         // Order Total Breakdown
         double subtotal = calculateCartTotal();
-        double tax = subtotal * 0.05;
-        double grandTotal = subtotal + tax;
+        double discount = (appliedCoupon != null) ? appliedDiscount : 0.0;
+        double taxableAmount = Math.max(0.0, subtotal - discount);
+        double tax = taxableAmount * 0.05;
+        double grandTotal = taxableAmount + tax;
 
-        JLabel totalDesc = new JLabel(String.format("<html><b>Items Total:</b> $%.2f &nbsp;|&nbsp; <b>Tax (5%%):</b> $%.2f &nbsp;|&nbsp; <b>Grand Total: <font color='#16a34a'>$%.2f</font></b></html>", subtotal, tax, grandTotal));
+        String breakdownHtml;
+        if (discount > 0 && appliedCoupon != null) {
+            breakdownHtml = String.format("<html><b>Items Total:</b> $%.2f &nbsp;|&nbsp; <font color='#16a34a'><b>Discount (%s):</b> -$%.2f</font> &nbsp;|&nbsp; <b>Tax (5%%):</b> $%.2f &nbsp;|&nbsp; <b>Grand Total: <font color='#16a34a'>$%.2f</font></b></html>",
+                    subtotal, appliedCoupon.getCode(), discount, tax, grandTotal);
+        } else {
+            breakdownHtml = String.format("<html><b>Items Total:</b> $%.2f &nbsp;|&nbsp; <b>Tax (5%%):</b> $%.2f &nbsp;|&nbsp; <b>Grand Total: <font color='#16a34a'>$%.2f</font></b></html>",
+                    subtotal, tax, grandTotal);
+        }
+
+        JLabel totalDesc = new JLabel(breakdownHtml);
         totalDesc.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         gbc.gridy = 1;
         panel.add(totalDesc, gbc);
@@ -741,6 +853,12 @@ public class DashboardFrame extends JFrame {
             // Switch to Order History tab to view new order
             tabbedPane.setSelectedIndex(2);
 
+            String promoMsg = (discount > 0 && appliedCoupon != null)
+                    ? ("<br/>Promotional Discount Applied: <b>-$" + String.format("%.2f", discount) + "</b> (" + appliedCoupon.getCode() + ")")
+                    : "";
+            appliedCoupon = null;
+            appliedDiscount = 0.0;
+
             String payBadge = "COMPLETED".equalsIgnoreCase(payment.getPaymentStatus())
                     ? "<font color='#16a34a'><b>COMPLETED</b></font>"
                     : "<font color='#d97706'><b>PENDING (COD)</b></font>";
@@ -748,7 +866,7 @@ public class DashboardFrame extends JFrame {
             ValidationUtil.showSuccess(this,
                     "🎉 <b>Order Placed Successfully!</b><br/>"
                             + "Order Reference: <b>" + newOrderCode + "</b><br/>"
-                            + "Total Amount: <b>$" + String.format("%.2f", grandTotal) + "</b> (" + selectedPayment + ")<br/>"
+                            + "Total Amount: <b>$" + String.format("%.2f", grandTotal) + "</b> (" + selectedPayment + ")" + promoMsg + "<br/>"
                             + "Payment Status: " + payBadge + " (Ref: <code>" + payment.getTransactionRef() + "</code>)<br/>"
                             + "Inventory stock has been reserved. You can track status in <b>Order History</b>.",
                     "Order Placed");
@@ -1307,6 +1425,14 @@ public class DashboardFrame extends JFrame {
         adminLowStockFilterCheck.addActionListener(e -> filterAdminCatalogByLowStock(adminLowStockFilterCheck.isSelected()));
         toolBar.add(adminLowStockFilterCheck);
 
+        JButton exportCatalogCsvBtn = new JButton("📊 Export CSV");
+        exportCatalogCsvBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        exportCatalogCsvBtn.setBackground(new Color(241, 245, 249));
+        exportCatalogCsvBtn.setForeground(new Color(30, 41, 59));
+        exportCatalogCsvBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        exportCatalogCsvBtn.addActionListener(e -> handleAdminExportCatalogCsv());
+        toolBar.add(exportCatalogCsvBtn);
+
         panel.add(toolBar, BorderLayout.NORTH);
 
         String[] columns = {"Product ID", "Name", "Category", "Unit Price ($)", "Stock Qty", "Status"};
@@ -1585,26 +1711,55 @@ public class DashboardFrame extends JFrame {
         panel.setBorder(new EmptyBorder(15, 15, 15, 15));
 
         // Admin Filter Toolbar
-        JPanel toolBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 5));
+        JPanel toolBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
         toolBar.setBackground(Color.WHITE);
 
-        toolBar.add(new JLabel("Filter Orders by Status:"));
+        toolBar.add(new JLabel("Status:"));
         adminOrderStatusFilterCombo = new JComboBox<>(new String[]{"ALL", "PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"});
         adminOrderStatusFilterCombo.addActionListener(e -> applyAdminOrderFilters());
         toolBar.add(adminOrderStatusFilterCombo);
 
-        JButton updateStatusBtn = new JButton("Update Order Status");
-        updateStatusBtn.setBackground(new Color(37, 99, 235));
+        toolBar.add(new JLabel("Search:"));
+        adminOrderSearchField = new JTextField(10);
+        adminOrderSearchField.addActionListener(e -> applyAdminOrderFilters());
+        toolBar.add(adminOrderSearchField);
+
+        JButton filterBtn = new JButton("Filter");
+        filterBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        filterBtn.setBackground(new Color(37, 99, 235));
+        filterBtn.setForeground(Color.WHITE);
+        filterBtn.addActionListener(e -> applyAdminOrderFilters());
+        toolBar.add(filterBtn);
+
+        JButton resetBtn = new JButton("Reset");
+        resetBtn.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        resetBtn.addActionListener(e -> {
+            adminOrderStatusFilterCombo.setSelectedIndex(0);
+            adminOrderSearchField.setText("");
+            applyAdminOrderFilters();
+        });
+        toolBar.add(resetBtn);
+
+        JButton updateStatusBtn = new JButton("Update Status");
+        updateStatusBtn.setBackground(new Color(16, 185, 129));
         updateStatusBtn.setForeground(Color.WHITE);
         updateStatusBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
         updateStatusBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
         updateStatusBtn.addActionListener(e -> handleAdminUpdateOrderStatus());
         toolBar.add(updateStatusBtn);
 
-        JButton viewOrderBtn = new JButton("View Invoice & Details");
+        JButton viewOrderBtn = new JButton("View Invoice");
         viewOrderBtn.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         viewOrderBtn.addActionListener(e -> handleAdminViewOrderDetails());
         toolBar.add(viewOrderBtn);
+
+        JButton exportOrdersCsvBtn = new JButton("📊 Export CSV");
+        exportOrdersCsvBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        exportOrdersCsvBtn.setBackground(new Color(241, 245, 249));
+        exportOrdersCsvBtn.setForeground(new Color(30, 41, 59));
+        exportOrdersCsvBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        exportOrdersCsvBtn.addActionListener(e -> handleAdminExportOrdersCsv());
+        toolBar.add(exportOrdersCsvBtn);
 
         panel.add(toolBar, BorderLayout.NORTH);
 
@@ -1639,10 +1794,17 @@ public class DashboardFrame extends JFrame {
     private void applyAdminOrderFilters() {
         if (adminOrdersTableModel == null) return;
         String filter = adminOrderStatusFilterCombo != null ? (String) adminOrderStatusFilterCombo.getSelectedItem() : "ALL";
+        String keyword = adminOrderSearchField != null ? adminOrderSearchField.getText().trim().toLowerCase() : "";
 
         adminOrdersTableModel.setRowCount(0);
         for (Order o : customerOrders) {
-            if ("ALL".equals(filter) || o.getOrderStatus().equalsIgnoreCase(filter)) {
+            boolean matchesStatus = "ALL".equals(filter) || o.getOrderStatus().equalsIgnoreCase(filter);
+            boolean matchesKeyword = keyword.isEmpty()
+                    || o.getOrderNumber().toLowerCase().contains(keyword)
+                    || String.valueOf(o.getUserId()).contains(keyword)
+                    || (o.getShippingAddress() != null && o.getShippingAddress().toLowerCase().contains(keyword));
+
+            if (matchesStatus && matchesKeyword) {
                 adminOrdersTableModel.addRow(new Object[]{
                         o.getOrderNumber(),
                         "User #" + o.getUserId(),
@@ -1716,6 +1878,30 @@ public class DashboardFrame extends JFrame {
             ValidationUtil.showSuccess(this,
                     "Order <b>" + selected.getOrderNumber() + "</b> status updated to <b>" + newStatus + "</b>.",
                     "Status Updated");
+        }
+    }
+
+    private void handleAdminExportCatalogCsv() {
+        File file = new File("qveto_inventory_catalog.csv");
+        try {
+            ProductStore.exportCatalogCsv(file);
+            ValidationUtil.showSuccess(this,
+                    "Inventory catalog exported to: <b>" + file.getAbsolutePath() + "</b>",
+                    "Catalog Exported");
+        } catch (Exception ex) {
+            ValidationUtil.showError(this, "Failed to export catalog CSV: " + ex.getMessage(), "Export Error");
+        }
+    }
+
+    private void handleAdminExportOrdersCsv() {
+        File file = new File("qveto_orders_master.csv");
+        try {
+            OrderStore.exportOrdersCsv(file);
+            ValidationUtil.showSuccess(this,
+                    "Platform orders master file exported to: <b>" + file.getAbsolutePath() + "</b>",
+                    "Orders Exported");
+        } catch (Exception ex) {
+            ValidationUtil.showError(this, "Failed to export orders CSV: " + ex.getMessage(), "Export Error");
         }
     }
 
