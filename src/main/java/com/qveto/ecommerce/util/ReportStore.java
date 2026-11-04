@@ -1,10 +1,14 @@
 package com.qveto.ecommerce.util;
 
 import com.qveto.ecommerce.dao.ReportDAO;
+import com.qveto.ecommerce.dao.ReportDAO.CustomerSpendStat;
+import com.qveto.ecommerce.dao.ReportDAO.LowStockAlert;
 import com.qveto.ecommerce.dao.ReportDAO.ProductSalesStat;
+import com.qveto.ecommerce.dao.ReportDAO.SalesExecutiveSummary;
 import com.qveto.ecommerce.model.Order;
 import com.qveto.ecommerce.model.OrderItem;
 import com.qveto.ecommerce.model.Product;
+import com.qveto.ecommerce.model.User;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -18,7 +22,14 @@ import java.util.*;
  * Centralized Report and Analytics Store coordinating between the JDBC ReportDAO layer and
  * in-memory transactional records for standalone demo mode.
  * 
- * Supports Member 2 (UI, Login & User Management) Admin Reports & KPIs requirements.
+ * Supports Member 2 (UI, Login & User Management) Admin Reports & KPIs requirements:
+ * - Gross Revenue, Collected Payments, and Average Order Value (AOV)
+ * - Order Status Lifecycle Distribution
+ * - Top-Selling Products Velocity Leaderboard
+ * - Category Revenue Contribution Breakdown
+ * - Customer Lifetime Value (CLV) Spend Leaderboard
+ * - Payment Gateway Channel Distribution
+ * - Text Executive Performance Report Export
  */
 public class ReportStore {
 
@@ -27,7 +38,7 @@ public class ReportStore {
     }
 
     /**
-     * Calculates total gross sales revenue.
+     * Calculates total gross sales revenue (excluding cancelled orders).
      */
     public static double getTotalRevenue() {
         if (DBStatusUtil.isDatabaseConnected()) {
@@ -44,6 +55,13 @@ public class ReportStore {
     }
 
     /**
+     * Calculates total collected/settled revenue from completed payments.
+     */
+    public static double getTotalCollectedRevenue() {
+        return PaymentStore.getTotalCollectedRevenue();
+    }
+
+    /**
      * Returns total order count across all statuses.
      */
     public static int getTotalOrders() {
@@ -56,6 +74,86 @@ public class ReportStore {
             }
         }
         return OrderStore.countAll();
+    }
+
+    /**
+     * Calculates average order value (AOV) across active orders.
+     */
+    public static double getAverageOrderValue() {
+        if (DBStatusUtil.isDatabaseConnected()) {
+            try {
+                SalesExecutiveSummary summary = new ReportDAO().getSalesExecutiveSummary();
+                if (summary != null && summary.getAverageOrderValue().doubleValue() > 0) {
+                    return summary.getAverageOrderValue().doubleValue();
+                }
+            } catch (Throwable t) {
+                System.err.println("[ReportStore] DB getSalesExecutiveSummary fallback: " + t.getMessage());
+            }
+        }
+
+        double rev = getTotalRevenue();
+        long activeOrders = OrderStore.getAllOrders().stream()
+                .filter(o -> !"CANCELLED".equalsIgnoreCase(o.getOrderStatus()))
+                .count();
+        return activeOrders > 0 ? (rev / activeOrders) : 0.0;
+    }
+
+    /**
+     * Filters orders within an inclusive date range [startDate, endDate].
+     */
+    public static List<Order> getOrdersBetween(String startDate, String endDate) {
+        List<Order> all = OrderStore.getAllOrders();
+        if ((startDate == null || startDate.isEmpty()) && (endDate == null || endDate.isEmpty())) {
+            return all;
+        }
+
+        List<Order> filtered = new ArrayList<>();
+        for (Order o : all) {
+            String date = o.getOrderDate();
+            if (date == null) continue;
+            boolean afterStart = (startDate == null || startDate.isEmpty()) || date.compareTo(startDate) >= 0;
+            boolean beforeEnd = (endDate == null || endDate.isEmpty()) || date.compareTo(endDate) <= 0;
+            if (afterStart && beforeEnd) {
+                filtered.add(o);
+            }
+        }
+        return filtered;
+    }
+
+    public static double getTotalRevenueBetween(String startDate, String endDate) {
+        double rev = 0.0;
+        for (Order o : getOrdersBetween(startDate, endDate)) {
+            if (!"CANCELLED".equalsIgnoreCase(o.getOrderStatus())) {
+                rev += o.getTotalAmount();
+            }
+        }
+        return rev;
+    }
+
+    public static int getTotalOrdersBetween(String startDate, String endDate) {
+        return getOrdersBetween(startDate, endDate).size();
+    }
+
+    public static double getAverageOrderValueBetween(String startDate, String endDate) {
+        List<Order> list = getOrdersBetween(startDate, endDate);
+        long active = list.stream().filter(o -> !"CANCELLED".equalsIgnoreCase(o.getOrderStatus())).count();
+        double rev = getTotalRevenueBetween(startDate, endDate);
+        return active > 0 ? (rev / active) : 0.0;
+    }
+
+    public static Map<String, Integer> getOrderStatusDistributionBetween(String startDate, String endDate) {
+        Map<String, Integer> dist = new LinkedHashMap<>();
+        dist.put("PENDING", 0);
+        dist.put("CONFIRMED", 0);
+        dist.put("SHIPPED", 0);
+        dist.put("DELIVERED", 0);
+        dist.put("CANCELLED", 0);
+
+        for (Order o : getOrdersBetween(startDate, endDate)) {
+            String s = o.getOrderStatus().toUpperCase();
+            dist.put(s, dist.getOrDefault(s, 0) + 1);
+        }
+        return dist;
     }
 
     /**
@@ -86,6 +184,41 @@ public class ReportStore {
             }
         }
         return ProductStore.getLowStockProducts().size();
+    }
+
+    /**
+     * Retrieves detailed low stock alert list utilizing view_low_stock_alerts when connected,
+     * or calculating deficits from in-memory catalog in offline mode.
+     */
+    public static List<LowStockAlert> getDetailedLowStockAlerts() {
+        if (DBStatusUtil.isDatabaseConnected()) {
+            try {
+                List<LowStockAlert> dbAlerts = new ReportDAO().getDetailedLowStockAlerts();
+                if (dbAlerts != null && !dbAlerts.isEmpty()) {
+                    return dbAlerts;
+                }
+            } catch (Throwable t) {
+                System.err.println("[ReportStore] DB getDetailedLowStockAlerts fallback: " + t.getMessage());
+            }
+        }
+
+        List<LowStockAlert> alerts = new ArrayList<>();
+        for (Product p : ProductStore.getAllProducts()) {
+            if (p.getStockQuantity() <= p.getLowStockThreshold()) {
+                int below = Math.max(0, p.getLowStockThreshold() - p.getStockQuantity());
+                String status = p.getStockQuantity() == 0 ? "OUT_OF_STOCK" : "LOW_STOCK";
+                alerts.add(new LowStockAlert(
+                        p.getProductId(),
+                        p.getProductName(),
+                        p.getCategory(),
+                        p.getStockQuantity(),
+                        p.getLowStockThreshold(),
+                        status,
+                        below
+                ));
+            }
+        }
+        return alerts;
     }
 
     /**
@@ -214,6 +347,61 @@ public class ReportStore {
     }
 
     /**
+     * Returns customer lifetime value (CLV) leaderboard ranked by total spend.
+     */
+    public static List<CustomerSpendStat> getCustomerSpendLeaderboard(int limit) {
+        if (DBStatusUtil.isDatabaseConnected()) {
+            try {
+                List<CustomerSpendStat> dbStats = new ReportDAO().getCustomerSpendLeaderboard(limit);
+                if (dbStats != null && !dbStats.isEmpty()) {
+                    return dbStats;
+                }
+            } catch (Throwable t) {
+                System.err.println("[ReportStore] DB getCustomerSpendLeaderboard fallback: " + t.getMessage());
+            }
+        }
+
+        // In-memory aggregation
+        Map<Integer, Integer> ordersMap = new HashMap<>();
+        Map<Integer, Double> spendMap = new HashMap<>();
+        Map<Integer, String> lastOrderMap = new HashMap<>();
+
+        for (Order o : OrderStore.getAllOrders()) {
+            int uid = o.getUserId();
+            ordersMap.put(uid, ordersMap.getOrDefault(uid, 0) + 1);
+            if (!"CANCELLED".equalsIgnoreCase(o.getOrderStatus())) {
+                spendMap.put(uid, spendMap.getOrDefault(uid, 0.0) + o.getTotalAmount());
+            }
+            if (!lastOrderMap.containsKey(uid) || o.getOrderDate().compareTo(lastOrderMap.get(uid)) > 0) {
+                lastOrderMap.put(uid, o.getOrderDate());
+            }
+        }
+
+        List<CustomerSpendStat> list = new ArrayList<>();
+        for (User u : UserStore.getAllUsers()) {
+            if (u.isAdmin()) continue;
+            int uid = u.getUserId();
+            int orders = ordersMap.getOrDefault(uid, 0);
+            double spend = spendMap.getOrDefault(uid, 0.0);
+            String lastDate = lastOrderMap.getOrDefault(uid, "N/A");
+            list.add(new CustomerSpendStat(uid, u.getFullName(), u.getEmail(), orders, BigDecimal.valueOf(spend), lastDate));
+        }
+
+        list.sort((a, b) -> b.getLifetimeSpent().compareTo(a.getLifetimeSpent()));
+        if (limit > 0 && list.size() > limit) {
+            return list.subList(0, limit);
+        }
+        return list;
+    }
+
+    /**
+     * Returns distribution of orders by payment channel.
+     */
+    public static Map<String, Integer> getPaymentMethodDistribution() {
+        return PaymentStore.getPaymentMethodDistribution();
+    }
+
+    /**
      * Exports an official executive business summary report to a text file.
      */
     /**
@@ -252,17 +440,19 @@ public class ReportStore {
             writer.write("                   QVETO E-COMMERCE & INVENTORY SYSTEM\n");
             writer.write("                     EXECUTIVE SALES & KPI REPORT\n");
             writer.write("========================================================================\n");
-            writer.write("Generated At:     " + timestamp + "\n");
-            writer.write("Data Source Mode: " + DBStatusUtil.getStatusText() + "\n");
+            writer.write("Generated At:        " + timestamp + "\n");
+            writer.write("Data Source Mode:    " + DBStatusUtil.getStatusText() + "\n");
             writer.write("------------------------------------------------------------------------\n\n");
 
             writer.write("1. EXECUTIVE PERFORMANCE METRICS\n");
             writer.write("------------------------------------------------------------------------\n");
-            writer.write(String.format("• Gross Sales Revenue:      $%.2f\n", getTotalRevenue()));
-            writer.write(String.format("• Total Platform Orders:    %d\n", getTotalOrders()));
-            writer.write(String.format("• Registered Customers:     %d\n", getTotalCustomers()));
-            writer.write(String.format("• Total Active Catalog SKUs:%d\n", ProductStore.countAll()));
-            writer.write(String.format("• Low-Stock Alerts / Risks: %d products\n\n", getLowStockExposureCount()));
+            writer.write(String.format("• Gross Sales Revenue:         $%.2f\n", getTotalRevenue()));
+            writer.write(String.format("• Settled Collected Payments:  $%.2f\n", getTotalCollectedRevenue()));
+            writer.write(String.format("• Average Order Value (AOV):   $%.2f\n", getAverageOrderValue()));
+            writer.write(String.format("• Total Platform Orders:       %d\n", getTotalOrders()));
+            writer.write(String.format("• Registered Customers:        %d\n", getTotalCustomers()));
+            writer.write(String.format("• Total Active Catalog SKUs:   %d\n", ProductStore.countAll()));
+            writer.write(String.format("• Low-Stock Alerts / Risks:    %d products\n\n", getLowStockExposureCount()));
 
             writer.write("2. ORDER LIFECYCLE DISTRIBUTION\n");
             writer.write("------------------------------------------------------------------------\n");
@@ -303,6 +493,31 @@ public class ReportStore {
                     writer.write(String.format("• %-18s : $%-10.2f (%5.1f%%)\n", e.getKey(), e.getValue(), pct));
                 }
             }
+            writer.write("\n");
+
+            writer.write("5. CUSTOMER LIFETIME VALUE (TOP SPENDERS)\n");
+            writer.write("------------------------------------------------------------------------\n");
+            writer.write(String.format("%-4s %-24s %-26s %-8s %-12s\n", "Rank", "Customer Name", "Email", "Orders", "Lifetime ($)"));
+            writer.write("------------------------------------------------------------------------\n");
+            List<CustomerSpendStat> topCustomers = getCustomerSpendLeaderboard(5);
+            if (topCustomers.isEmpty()) {
+                writer.write("No customer spend history recorded.\n");
+            } else {
+                int cRank = 1;
+                for (CustomerSpendStat cs : topCustomers) {
+                    writer.write(String.format("#%-3d %-24s %-26s %-8d $%-11.2f\n",
+                            cRank++, cs.getFullName(), cs.getEmail(), cs.getLifetimeOrders(), cs.getLifetimeSpent().doubleValue()));
+                }
+            }
+            writer.write("\n");
+
+            writer.write("6. PAYMENT METHOD & SETTLEMENT DISTRIBUTION\n");
+            writer.write("------------------------------------------------------------------------\n");
+            Map<String, Integer> payDist = getPaymentMethodDistribution();
+            for (Map.Entry<String, Integer> e : payDist.entrySet()) {
+                writer.write(String.format("• %-18s : %d transaction(s)\n", e.getKey(), e.getValue()));
+            }
+
             writer.write("========================================================================\n");
             writer.write("CONFIDENTIAL — FOR INTERNAL MANAGEMENT & INTERNSHIP EVALUATION ONLY\n");
         }
