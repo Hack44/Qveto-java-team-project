@@ -216,6 +216,34 @@ public class ReportStore {
     /**
      * Exports an official executive business summary report to a text file.
      */
+    /**
+     * Delegates to ReportExportUtil for full CSV sales orders export.
+     */
+    public static int exportSalesOrdersCSV(File file) throws IOException {
+        return ReportExportUtil.exportSalesOrdersCSV(file);
+    }
+
+    /**
+     * Delegates to ReportExportUtil for line items CSV export.
+     */
+    public static int exportOrderItemsCSV(File file) throws IOException {
+        return ReportExportUtil.exportOrderItemsCSV(file);
+    }
+
+    /**
+     * Delegates to ReportExportUtil for product inventory performance CSV export.
+     */
+    public static int exportProductPerformanceCSV(File file) throws IOException {
+        return ReportExportUtil.exportProductPerformanceCSV(file);
+    }
+
+    /**
+     * Delegates to ReportExportUtil for comprehensive plain text audit report.
+     */
+    public static void exportComprehensiveSalesAudit(File file) throws IOException {
+        ReportExportUtil.exportComprehensiveSalesAudit(file);
+    }
+
     public static void exportExecutiveReport(File file) throws IOException {
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
 

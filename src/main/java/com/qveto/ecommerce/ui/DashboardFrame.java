@@ -1901,6 +1901,13 @@ public class DashboardFrame extends JFrame {
         exportBtn.addActionListener(e -> handleExportExecutiveReport());
 
         actionBtnRow.add(refreshBtn);
+        JButton exportCsvBtn = new JButton("Export Sales Audit (CSV)");
+        exportCsvBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        exportCsvBtn.setBackground(new Color(37, 99, 235));
+        exportCsvBtn.setForeground(Color.WHITE);
+        exportCsvBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        exportCsvBtn.addActionListener(e -> handleExportSalesAuditCSV());
+        actionBtnRow.add(exportCsvBtn);
         actionBtnRow.add(exportBtn);
         headerRow.add(actionBtnRow, BorderLayout.EAST);
         northPanel.add(headerRow, BorderLayout.NORTH);
@@ -2099,6 +2106,24 @@ public class DashboardFrame extends JFrame {
                         String.format("$%.2f", e.getValue()),
                         String.format("%.1f%%", pct)
                 });
+            }
+        }
+    }
+
+    private void handleExportSalesAuditCSV() {
+        JFileChooser fileChooser = new JFileChooser();
+        fileChooser.setDialogTitle("Export Sales Orders Audit (CSV)");
+        fileChooser.setSelectedFile(new File("qveto_sales_orders_audit.csv"));
+        int userSelection = fileChooser.showSaveDialog(this);
+        if (userSelection == JFileChooser.APPROVE_OPTION) {
+            File fileToSave = fileChooser.getSelectedFile();
+            try {
+                int rows = com.qveto.ecommerce.util.ReportExportUtil.exportSalesOrdersCSV(fileToSave);
+                ValidationUtil.showSuccess(this,
+                        "Sales Orders Audit CSV exported successfully (" + rows + " transactions):<br/><b>" + fileToSave.getAbsolutePath() + "</b>",
+                        "CSV Audit Exported");
+            } catch (Exception ex) {
+                ValidationUtil.showError(this, "Failed to export CSV: " + ex.getMessage(), "Export Error");
             }
         }
     }

@@ -27,6 +27,7 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
     * `ReportDAO`: Core Qveto KPI reporting metrics, executive sales summary, low-stock reorder alerts, customer lifetime spend leaderboard, and view-backed queries
   * Utility & Security: `PasswordUtil` providing SHA-256 hashing compatible with MySQL `SHA2()`
   * Database Integrity & Automated Verification Suite (`DatabaseIntegrityTest.java` & `test.bat`): Automated 7-stage test harness verifying SHA-256 password hashing, BigDecimal financial precision, inventory stock decrements and cancellation restoration, foreign-key safe-deletion constraints, ReportDAO analytical consistency, live atomic transaction rollback safety, and atomic order-payment commits.
+  * Report Export & Audit Engine (`ReportExportUtil.java`): Enterprise sales audit and reporting export engine providing RFC 4180 compliant CSV exports (`sales_orders_audit.csv`, `order_line_items_audit.csv`, `product_inventory_audit.csv`, `customer_spend_audit.csv`) and comprehensive multi-section plain-text sales audit dossiers (`comprehensive_sales_audit.txt`) with dual-engine MySQL/in-memory fallback.
 * **Member 2 (UI, Presentation & Store Management):**
   * Java Swing Authentication Frames (`LoginFrame`) with password visibility toggle (Show/Hide)
   * Customer & Admin Login workflows with input validation and JDBC `UserDAO` authentication
@@ -43,7 +44,7 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
   * Admin Order Fulfillment Management: Inspect order details, filter by status, and advance order status (`PENDING` -> `CONFIRMED` -> `SHIPPED` -> `DELIVERED`)
   * Admin User Management (`createAdminUsersPanel`): Live user directory, real-time KPI metrics, search by name/email, role filtering, User Dossier Modal (`UserDetailsDialog`), and account deactivation with self-deletion protection
   * Admin Category Management (`CategoryManagementDialog` & `CategoryStore`): Interactive category manager dialog allowing adding categories, renaming, deleting with product safety check, and reviewing product counts
-  * Executive Analytics Dashboard (`ReportStore` & `ReportDAO`): Live sales revenue, order fulfillment pipeline cards, category revenue breakdown, and top-selling products leaderboard
+  * Executive Analytics Dashboard (`ReportStore` & `ReportDAO`): Live sales revenue, order fulfillment pipeline cards, category revenue breakdown, top-selling products leaderboard, one-click executive report export, and one-click Sales Audit CSV export (`ReportExportUtil`)
   * Real-Time Database Status Indicator (`DBStatusUtil`): Visual connectivity pill (`● MySQL Active` vs `○ Standalone Demo`) across login and dashboard headers
   * Centralized Store Architecture (`UserStore`, `ProductStore`, `OrderStore`, `CategoryStore`, `CartStore`, `ReportStore`) coordinating between JDBC DAOs and resilient in-memory fallback state
   * Centralized Form Validation Utility (`ValidationUtil`)

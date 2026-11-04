@@ -190,6 +190,24 @@ public class UserStore {
     }
 
     /**
+     * Finds a user by ID from the database or in-memory fallback.
+     */
+    public static User findById(int userId) {
+        if (DBStatusUtil.isDatabaseConnected()) {
+            try {
+                User u = new UserDAO().findById(userId);
+                if (u != null) return u;
+            } catch (Throwable t) {
+                System.err.println("[UserStore] DB findById fallback: " + t.getMessage());
+            }
+        }
+        for (User u : inMemoryUsers) {
+            if (u.getUserId() == userId) return u;
+        }
+        return null;
+    }
+
+    /**
      * Deletes a user account by ID (Admin operation).
      */
     public static boolean deleteUser(int userId) {
