@@ -3,7 +3,11 @@ package com.qveto.ecommerce.util;
 import com.qveto.ecommerce.dao.OrderDAO;
 import com.qveto.ecommerce.model.Order;
 import com.qveto.ecommerce.model.OrderItem;
+import com.qveto.ecommerce.model.Payment;
 
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -210,5 +214,34 @@ public class OrderStore {
             }
         }
         return revenue;
+    }
+
+    /**
+     * Exports all platform orders to an RFC 4180 compliant CSV file for audit and accounting.
+     *
+     * @param targetFile destination CSV file
+     * @throws IOException if writing fails
+     */
+    public static void exportOrdersCsv(File targetFile) throws IOException {
+        List<Order> orders = getAllOrders();
+        try (FileWriter writer = new FileWriter(targetFile)) {
+            writer.write("Order ID,Order Number,User ID,Total Amount ($),Order Status,Payment Method,Payment Status,Transaction Ref,Order Date,Shipping Address\n");
+            for (Order o : orders) {
+                Payment pay = PaymentStore.getPaymentForOrder(o.getOrderId());
+                String safeAddr = (o.getShippingAddress() != null ? o.getShippingAddress() : "").replace("\"", "\"\"");
+                writer.write(String.format("%d,\"%s\",%d,%.2f,\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"\n",
+                        o.getOrderId(),
+                        o.getOrderNumber(),
+                        o.getUserId(),
+                        o.getTotalAmount(),
+                        o.getOrderStatus(),
+                        o.getPaymentMethod(),
+                        pay.getPaymentStatus(),
+                        pay.getTransactionRef(),
+                        o.getOrderDate(),
+                        safeAddr
+                ));
+            }
+        }
     }
 }

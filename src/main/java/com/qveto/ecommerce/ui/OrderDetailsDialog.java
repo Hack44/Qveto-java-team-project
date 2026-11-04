@@ -4,6 +4,7 @@ import com.qveto.ecommerce.model.Order;
 import com.qveto.ecommerce.model.OrderItem;
 import com.qveto.ecommerce.model.Payment;
 import com.qveto.ecommerce.util.PaymentStore;
+import com.qveto.ecommerce.util.PdfInvoiceGenerator;
 import com.qveto.ecommerce.util.ValidationUtil;
 
 import javax.swing.*;
@@ -136,9 +137,25 @@ public class OrderDetailsDialog extends JDialog {
         contentPanel.add(Box.createVerticalStrut(14));
 
         // Total Summary Box
-        JPanel summaryBox = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JPanel summaryBox = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
         summaryBox.setBackground(Color.WHITE);
         summaryBox.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        double itemsSum = 0;
+        if (order.getItems() != null && !order.getItems().isEmpty()) {
+            for (OrderItem it : order.getItems()) {
+                itemsSum += it.getSubtotal();
+            }
+        } else {
+            itemsSum = order.getTotalAmount();
+        }
+        double estimatedTax = itemsSum * 0.05;
+        double promoSavings = (itemsSum + estimatedTax) - order.getTotalAmount();
+        if (promoSavings > 0.5) {
+            JLabel savingsLabel = new JLabel(String.format("<html><font color='#16a34a'><b>Promotional Savings: -$%.2f</b></font> &nbsp;|&nbsp;</html>", promoSavings));
+            savingsLabel.setFont(new Font("Segoe UI", Font.BOLD, 13));
+            summaryBox.add(savingsLabel);
+        }
 
         JLabel totalLabel = new JLabel(String.format("Total Amount: $%.2f", order.getTotalAmount()));
         totalLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
@@ -152,6 +169,14 @@ public class OrderDetailsDialog extends JDialog {
         JPanel actionPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 12));
         actionPanel.setBackground(new Color(248, 250, 252));
         actionPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(226, 232, 240)));
+
+        JButton exportPdfBtn = new JButton("📄 Download PDF (.pdf)");
+        exportPdfBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        exportPdfBtn.setBackground(new Color(220, 38, 38));
+        exportPdfBtn.setForeground(Color.WHITE);
+        exportPdfBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        exportPdfBtn.addActionListener(e -> handleExportPdfInvoice(order, payment, customerAddress));
+        actionPanel.add(exportPdfBtn);
 
         JButton exportBtn = new JButton("Export Invoice (.txt)");
         exportBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
@@ -297,6 +322,22 @@ public class OrderDetailsDialog extends JDialog {
         return label;
     }
 
+    private void handleExportPdfInvoice(Order order, Payment payment, String customerAddress) {
+        String fileName = "Invoice_" + order.getOrderNumber() + ".pdf";
+        File file = new File(fileName);
+
+        try {
+            PdfInvoiceGenerator.generateInvoicePdf(order, payment, customerAddress, file);
+            ValidationUtil.showSuccess(this,
+                    "Branded PDF invoice successfully generated at:<br/><b>" + file.getAbsolutePath() + "</b>",
+                    "PDF Invoice Ready");
+        } catch (IOException ex) {
+            ValidationUtil.showError(this,
+                    "Failed to generate PDF invoice: " + ex.getMessage(),
+                    "Export Error");
+        }
+    }
+
     private void handleExportInvoice(Order order, Payment payment, String customerAddress) {
         String fileName = "Invoice_" + order.getOrderNumber() + ".txt";
         File file = new File(fileName);
@@ -318,16 +359,27 @@ public class OrderDetailsDialog extends JDialog {
             writer.write(String.format("%-30s %-6s %-12s %-10s\n", "Item Description", "Qty", "Unit Price", "Subtotal"));
             writer.write("--------------------------------------------------------------\n");
 
+            double itemsSubtotal = 0;
             if (order.getItems() != null && !order.getItems().isEmpty()) {
                 for (OrderItem item : order.getItems()) {
+                    itemsSubtotal += item.getSubtotal();
                     writer.write(String.format("%-30s %-6d $%-11.2f $%-9.2f\n",
                             item.getProductName(), item.getQuantity(), item.getUnitPrice(), item.getSubtotal()));
                 }
             } else {
+                itemsSubtotal = order.getTotalAmount();
                 writer.write(String.format("%-30s %-6d $%-11.2f $%-9.2f\n",
                         "Standard E-Commerce Items Package", 1, order.getTotalAmount(), order.getTotalAmount()));
             }
 
+            writer.write("--------------------------------------------------------------\n");
+            double taxAmount = itemsSubtotal * 0.05;
+            double savingsAmount = (itemsSubtotal + taxAmount) - order.getTotalAmount();
+            writer.write(String.format("Items Subtotal:   $%.2f\n", itemsSubtotal));
+            if (savingsAmount > 0.5) {
+                writer.write(String.format("Promo Savings:   -$%.2f\n", savingsAmount));
+            }
+            writer.write(String.format("Estimated Tax:    $%.2f\n", taxAmount));
             writer.write("--------------------------------------------------------------\n");
             writer.write(String.format("GRAND TOTAL:      $%.2f\n", order.getTotalAmount()));
             writer.write("==============================================================\n");
