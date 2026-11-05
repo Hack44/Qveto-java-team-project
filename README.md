@@ -14,7 +14,8 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
   * Database Migration v2 (`database/migration_v2.sql`) with query performance indexes (`idx_products_category`, `idx_orders_status`, etc.) and `updated_at` audit triggers
   * Database Migration v3 (`database/migration_v3.sql`) with 6 reporting and analytics views (`view_sales_summary`, `view_top_selling_products`, `view_low_stock_alerts`, `view_category_sales_summary`, `view_customer_order_history`, `view_payment_method_distribution`)
   * Synthetic Seed Data (`database/seed.sql`) containing demo admin, customers, catalog items, and sample transaction orders
-  * Singleton JDBC Connection Factory (`DBConnection.java`) with automated properties loading and resilient fallback
+  * Resilient JDBC Connection Pool & Proxy Recycling (`DBConnectionPool.java` & `DBConnection.java`): High-performance thread-safe connection pool with pre-lease health validation (`isValid(2)`), stale socket eviction, and dynamic proxy interception that recycles connections back to the idle pool on `conn.close()`
+  * Exponential Backoff Retry Policy (`DatabaseRetryPolicy.java`): Fault-tolerance engine with randomized jitter classifying transient failures (deadlocks, lock timeouts, connection drops) vs fatal constraint errors
   * Model Entity Layer: `User`, `Product`, `Category`, `Order`, `OrderItem`, `CartItem`, and `Payment` with `BigDecimal` financial precision
   * Data Access Object (DAO) Persistence Suite:
     * `UserDAO`: Authentication with SHA-256 password hashing (`PasswordUtil`), registration, contact updates, and password changes
@@ -26,7 +27,7 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
     * `CartDAO`: Full cart persistence (`cart_items` table) with upsert, quantity management, item removal, and total value calculation
     * `ReportDAO`: Core Qveto KPI reporting metrics, executive sales summary, low-stock reorder alerts, customer lifetime spend leaderboard, and view-backed queries
   * Utility & Security: `PasswordUtil` providing SHA-256 hashing compatible with MySQL `SHA2()`
-  * Database Integrity & Automated Verification Suite (`DatabaseIntegrityTest.java` & `test.bat`): Automated 7-stage test harness verifying SHA-256 password hashing, BigDecimal financial precision, inventory stock decrements and cancellation restoration, foreign-key safe-deletion constraints, ReportDAO analytical consistency, live atomic transaction rollback safety, and atomic order-payment commits.
+  * Database Integrity & Automated Verification Suite (`DatabaseIntegrityTest.java` & `test.bat`): Automated 9-stage test harness verifying SHA-256 password hashing, BigDecimal financial precision, inventory stock decrements and cancellation restoration, foreign-key safe-deletion constraints, ReportDAO analytical consistency, DatabaseRetryPolicy exponential backoff, DBConnectionPool proxy recycling, live atomic transaction rollback safety, and atomic order-payment commits.
   * Report Export & Audit Engine (`ReportExportUtil.java`): Enterprise sales audit and reporting export engine providing RFC 4180 compliant CSV exports (`sales_orders_audit.csv`, `order_line_items_audit.csv`, `product_inventory_audit.csv`, `customer_spend_audit.csv`) and comprehensive multi-section plain-text sales audit dossiers (`comprehensive_sales_audit.txt`) with dual-engine MySQL/in-memory fallback.
 * **Member 2 (UI, Presentation & Store Management):**
   * Java Swing Authentication Frames (`LoginFrame`) with password visibility toggle (Show/Hide)
@@ -98,7 +99,7 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
 Double-click `run.bat` in the project root to compile and launch the application.
 
 #### Automated Database Integrity & Rollback Tests
-Double-click `test.bat` in the project root (or run `java -cp "bin;<path-to-mysql-connector-j.jar>" com.qveto.ecommerce.util.DatabaseIntegrityTest`) to execute the 7-stage automated verification suite.
+Double-click `test.bat` in the project root (or run `java -cp "bin;<path-to-mysql-connector-j.jar>" com.qveto.ecommerce.util.DatabaseIntegrityTest`) to execute the 9-stage automated verification suite.
 
 #### Using Maven (Recommended)
 ```bash

@@ -44,12 +44,14 @@ public class DatabaseIntegrityTest {
         runTest("Inventory Stock Consistency & Restoration", DatabaseIntegrityTest::testInventoryConsistency);
         runTest("Category Foreign-Key Protection & Safe Deletion", DatabaseIntegrityTest::testCategoryForeignKeyProtection);
         runTest("ReportDAO KPI Mathematical Consistency", DatabaseIntegrityTest::testAnalyticsConsistency);
+        runTest("DatabaseRetryPolicy Transient Error Classification & Exponential Backoff", DatabaseIntegrityTest::testRetryPolicyResilience);
 
         if (DBStatusUtil.isDatabaseConnected()) {
+            runTest("DBConnectionPool Lifecycle & Transparent Proxy Recycling", DatabaseIntegrityTest::testConnectionPoolRecycling);
             runTest("Live JDBC Atomic Transaction Rollback Safety", DatabaseIntegrityTest::testLiveTransactionRollback);
             runTest("Live Order-Payment Atomic Commit Completeness", DatabaseIntegrityTest::testLiveOrderPaymentAtomicCommit);
         } else {
-            System.out.println("ℹ Note: MySQL is offline; live JDBC multi-table transaction tests skipped (standalone fallback verified).\n");
+            System.out.println("ℹ Note: MySQL is offline; live JDBC connection pool & multi-table transaction tests skipped (standalone fallback verified).\n");
         }
 
         printSummary();
@@ -320,6 +322,85 @@ public class DatabaseIntegrityTest {
             if (createdTempUser && targetUserId > 0) {
                 new UserDAO().deleteById(targetUserId);
             }
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // 8. Database Retry Policy Resilience
+    // ---------------------------------------------------------------
+    private static void testRetryPolicyResilience() throws SQLException {
+        DatabaseRetryPolicy policy = new DatabaseRetryPolicy(3, 20L, 100L);
+
+        // 1. Verify transient error identification
+        assertTrue("Deadlock (1213) must be classified as transient",
+                DatabaseRetryPolicy.isTransient(new SQLException("Deadlock found", "40001", 1213)));
+        assertTrue("Lock wait timeout (1205) must be classified as transient",
+                DatabaseRetryPolicy.isTransient(new SQLException("Lock wait timeout exceeded", "HY000", 1205)));
+        assertTrue("Communications link failure must be classified as transient",
+                DatabaseRetryPolicy.isTransient(new SQLException("Communications link failure", "08S01", 0)));
+
+        // 2. Verify fatal error identification
+        assertFalse("Unique constraint violation (1062) must be fatal",
+                DatabaseRetryPolicy.isTransient(new SQLException("Duplicate entry", "23000", 1062)));
+        assertFalse("Foreign key violation (1452) must be fatal",
+                DatabaseRetryPolicy.isTransient(new SQLException("Cannot add child row", "23000", 1452)));
+
+        // 3. Verify retry execution with simulated recovery on attempt 2
+        final int[] attempts = {0};
+        String result = policy.execute("SimulatedTransientRecovery", () -> {
+            attempts[0]++;
+            if (attempts[0] == 1) {
+                throw new SQLException("Simulated lock wait timeout", "HY000", 1205);
+            }
+            return "SUCCESS";
+        });
+
+        assertEquals("Policy must retry and succeed on attempt 2", 2, attempts[0]);
+        assertEquals("Returned value must match", "SUCCESS", result);
+
+        // 4. Verify fatal error aborts immediately without redundant retries
+        final int[] fatalAttempts = {0};
+        try {
+            policy.execute("SimulatedFatalError", () -> {
+                fatalAttempts[0]++;
+                throw new SQLException("Duplicate entry for key", "23000", 1062);
+            });
+            fail("Fatal exception should have been thrown");
+        } catch (SQLException expected) {
+            assertEquals("Fatal exception must fail immediately on first attempt", 1, fatalAttempts[0]);
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // 9. Connection Pool Proxy Recycling & Lifecycle
+    // ---------------------------------------------------------------
+    private static void testConnectionPoolRecycling() throws SQLException {
+        assertTrue("Connection pooling must be enabled", DBConnection.isPoolEnabled());
+
+        int initialActive = DBConnection.getActiveConnections();
+
+        Connection conn1 = DBConnection.getConnection();
+        assertNotNull("Acquired connection must not be null", conn1);
+        assertTrue("Acquired connection must be healthy and valid", conn1.isValid(2));
+        assertEquals("Active count must increment by 1", initialActive + 1, DBConnection.getActiveConnections());
+
+        // Close connection — must be returned to pool, not destroyed
+        conn1.close();
+        assertTrue("Proxy connection must report isClosed() true after close", conn1.isClosed());
+        assertEquals("Active count must decrement back to initial after close", initialActive, DBConnection.getActiveConnections());
+
+        // Attempting to query closed proxy should throw SQLException
+        try {
+            conn1.createStatement();
+            fail("Calling method on closed proxy connection must throw SQLException");
+        } catch (SQLException expected) {
+            assertTrue("Expected closed connection exception", expected.getMessage().contains("closed"));
+        }
+
+        // Re-acquiring connection from pool should be fast and valid
+        try (Connection conn2 = DBConnection.getConnection()) {
+            assertNotNull("Re-acquired pooled connection must not be null", conn2);
+            assertTrue("Re-acquired pooled connection must be valid", conn2.isValid(2));
         }
     }
 

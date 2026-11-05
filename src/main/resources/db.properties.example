@@ -10,6 +10,30 @@
 #
 # ============================================================
 
+# --- Primary JDBC DataSource ---
 db.url=jdbc:mysql://localhost:3306/ecommerce_db
 db.user=root
 db.password=REPLACE_WITH_YOUR_MYSQL_PASSWORD
+
+# --- Connection Pool Configuration (DBConnectionPool) ---
+# Enable or disable proxy connection pooling (defaults to true)
+db.pool.enabled=true
+
+# Pre-warmed idle connections allocated on startup (default: 3)
+db.pool.initialSize=3
+
+# Maximum concurrent connections allowed before queuing (default: 10)
+db.pool.maxSize=10
+
+# Maximum wait time in milliseconds when leasing a connection (default: 5000 ms)
+db.pool.timeout=5000
+
+# Pre-lease health validation timeout in seconds via isValid() (default: 2 s)
+db.pool.validationTimeout=2
+
+# --- Fault-Tolerance & Retry Policy (DatabaseRetryPolicy) ---
+# Maximum attempts for transient SQL errors (deadlock, lock timeout, connection drop)
+db.retry.maxAttempts=3
+
+# Base exponential backoff delay in milliseconds
+db.retry.backoffMs=150
