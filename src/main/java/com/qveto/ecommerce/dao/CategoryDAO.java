@@ -2,6 +2,9 @@ package com.qveto.ecommerce.dao;
 
 import com.qveto.ecommerce.DBConnection;
 import com.qveto.ecommerce.model.Category;
+import com.qveto.ecommerce.util.DataSanitizer;
+import com.qveto.ecommerce.util.InputBoundaryValidator;
+import com.qveto.ecommerce.util.ValidationResult;
 
 import java.sql.*;
 import java.util.ArrayList;
@@ -30,16 +33,20 @@ public class CategoryDAO {
      * @return the auto-generated category_id, or -1 on failure
      */
     public int addCategory(String categoryName) {
-        if (categoryName == null || categoryName.trim().isEmpty()) {
+        ValidationResult val = InputBoundaryValidator.validateCategory(categoryName);
+        if (!val.isValid()) {
+            System.err.println("[CategoryDAO] addCategory() validation failed: " + val.getCombinedErrorMessage());
             return -1;
         }
+
+        String cleanName = DataSanitizer.sanitizeText(categoryName, 100);
 
         String sql = "INSERT INTO categories (category_name) VALUES (?)";
 
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
 
-            stmt.setString(1, categoryName.trim());
+            stmt.setString(1, cleanName);
 
             int affected = stmt.executeUpdate();
             if (affected > 0) {
@@ -269,16 +276,21 @@ public class CategoryDAO {
      * @return {@code true} if update succeeded
      */
     public boolean updateCategory(int categoryId, String newCategoryName) {
-        if (newCategoryName == null || newCategoryName.trim().isEmpty()) {
+        if (categoryId <= 0) return false;
+        ValidationResult val = InputBoundaryValidator.validateCategory(newCategoryName);
+        if (!val.isValid()) {
+            System.err.println("[CategoryDAO] updateCategory() validation failed: " + val.getCombinedErrorMessage());
             return false;
         }
+
+        String cleanName = DataSanitizer.sanitizeText(newCategoryName, 100);
 
         String sql = "UPDATE categories SET category_name = ? WHERE category_id = ?";
 
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
-            stmt.setString(1, newCategoryName.trim());
+            stmt.setString(1, cleanName);
             stmt.setInt(2, categoryId);
 
             return stmt.executeUpdate() > 0;

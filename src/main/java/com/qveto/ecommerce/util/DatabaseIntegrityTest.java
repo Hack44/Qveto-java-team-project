@@ -45,11 +45,14 @@ public class DatabaseIntegrityTest {
         runTest("Category Foreign-Key Protection & Safe Deletion", DatabaseIntegrityTest::testCategoryForeignKeyProtection);
         runTest("ReportDAO KPI Mathematical Consistency", DatabaseIntegrityTest::testAnalyticsConsistency);
         runTest("DatabaseRetryPolicy Transient Error Classification & Exponential Backoff", DatabaseIntegrityTest::testRetryPolicyResilience);
+        runTest("DataSanitizer XSS Neutralization & Normalization", DatabaseIntegrityTest::testDataSanitizationAndNormalization);
+        runTest("InputBoundaryValidator Domain Entity Constraint Rules", DatabaseIntegrityTest::testInputBoundaryValidationRules);
 
         if (DBStatusUtil.isDatabaseConnected()) {
             runTest("DBConnectionPool Lifecycle & Transparent Proxy Recycling", DatabaseIntegrityTest::testConnectionPoolRecycling);
             runTest("Live JDBC Atomic Transaction Rollback Safety", DatabaseIntegrityTest::testLiveTransactionRollback);
             runTest("Live Order-Payment Atomic Commit Completeness", DatabaseIntegrityTest::testLiveOrderPaymentAtomicCommit);
+            runTest("Live Persistence Layer Sanitization & Boundary Defense", DatabaseIntegrityTest::testSanitizedPersistenceLayer);
         } else {
             System.out.println("ℹ Note: MySQL is offline; live JDBC connection pool & multi-table transaction tests skipped (standalone fallback verified).\n");
         }
@@ -402,6 +405,128 @@ public class DatabaseIntegrityTest {
             assertNotNull("Re-acquired pooled connection must not be null", conn2);
             assertTrue("Re-acquired pooled connection must be valid", conn2.isValid(2));
         }
+    }
+
+    // ---------------------------------------------------------------
+    // 10. Data Sanitization & Normalization
+    // ---------------------------------------------------------------
+    private static void testDataSanitizationAndNormalization() {
+        // 1. HTML & Script stripping
+        String dirtyInput = "<script type='text/javascript'>alert('XSS');</script><b>Studio Headphones</b>";
+        String cleanHtml = DataSanitizer.stripHtml(dirtyInput);
+        assertEquals("stripHtml must remove script tags and HTML markup", "Studio Headphones", cleanHtml);
+
+        // 2. HTML escaping
+        String escapeInput = "<div class=\"test\">&'Hello'</div>";
+        String escaped = DataSanitizer.escapeHtml(escapeInput);
+        assertTrue("escapeHtml must convert < to &lt;", escaped.contains("&lt;div"));
+        assertTrue("escapeHtml must convert & to &amp;", escaped.contains("&amp;"));
+        assertTrue("escapeHtml must convert \" to &quot;", escaped.contains("&quot;"));
+
+        // 3. Email normalization
+        String dirtyEmail = "  Customer.Test@Example.COM  ";
+        assertEquals("normalizeEmail must trim and lowercase", "customer.test@example.com", DataSanitizer.normalizeEmail(dirtyEmail));
+
+        // 4. Phone normalization
+        String dirtyPhone = " +91 (98765) 43-210 ";
+        assertEquals("normalizePhone must retain digits and leading +", "+919876543210", DataSanitizer.normalizePhone(dirtyPhone));
+
+        // 5. Whitespace normalization
+        String multiSpace = "  Premium    Mechanical   Keyboard  ";
+        assertEquals("normalizeWhitespace must collapse multiple spaces", "Premium Mechanical Keyboard", DataSanitizer.normalizeWhitespace(multiSpace));
+
+        // 6. Safe truncation
+        String longText = "1234567890ABCDEF";
+        assertEquals("truncate must bound string to maxLength", "12345", DataSanitizer.truncate(longText, 5));
+
+        // 7. SQL injection risk detection
+        assertTrue("detectSqlInjectionRisk must identify classic OR 1=1 pattern",
+                DataSanitizer.detectSqlInjectionRisk("' OR '1'='1"));
+        assertTrue("detectSqlInjectionRisk must identify UNION SELECT pattern",
+                DataSanitizer.detectSqlInjectionRisk("1 UNION ALL SELECT null, email, password FROM users--"));
+        assertTrue("detectSqlInjectionRisk must identify stacked DROP TABLE query",
+                DataSanitizer.detectSqlInjectionRisk("1; DROP TABLE products"));
+        assertFalse("detectSqlInjectionRisk must pass normal search keywords",
+                DataSanitizer.detectSqlInjectionRisk("Wireless Bluetooth Noise Cancelling"));
+    }
+
+    // ---------------------------------------------------------------
+    // 11. Input Boundary Validation
+    // ---------------------------------------------------------------
+    private static void testInputBoundaryValidationRules() {
+        // 1. User validation bounds
+        ValidationResult emptyUser = InputBoundaryValidator.validateUserRegistration("", "", "", null, null);
+        assertFalse("Empty user registration must be rejected", emptyUser.isValid());
+        assertTrue("Must report missing name", emptyUser.getCombinedErrorMessage().contains("Full name"));
+
+        ValidationResult invalidEmailUser = InputBoundaryValidator.validateUserRegistration("John Doe", "not-an-email", "secret123", null, null);
+        assertFalse("Invalid email format must be rejected", invalidEmailUser.isValid());
+
+        ValidationResult shortPassUser = InputBoundaryValidator.validateUserRegistration("John Doe", "john@example.com", "123", null, null);
+        assertFalse("Short password (<6 chars) must be rejected", shortPassUser.isValid());
+
+        ValidationResult validUser = InputBoundaryValidator.validateUserRegistration("John Doe", "john@example.com", "validPass123", "+919876543210", "123 Street");
+        assertTrue("Valid user registration must pass", validUser.isValid());
+
+        // 2. Product validation bounds
+        Product negativePrice = new Product(0, 1, "General", "Test Product", "Description", new BigDecimal("-15.00"), 10, 5);
+        ValidationResult negPriceRes = InputBoundaryValidator.validateProduct(negativePrice);
+        assertFalse("Negative price must be rejected", negPriceRes.isValid());
+
+        Product negativeStock = new Product(0, 1, "General", "Test Product", "Description", new BigDecimal("15.00"), -5, 5);
+        ValidationResult negStockRes = InputBoundaryValidator.validateProduct(negativeStock);
+        assertFalse("Negative stock must be rejected", negStockRes.isValid());
+
+        Product blankName = new Product(0, 1, "General", "   ", "Description", new BigDecimal("15.00"), 10, 5);
+        ValidationResult blankNameRes = InputBoundaryValidator.validateProduct(blankName);
+        assertFalse("Blank product name must be rejected", blankNameRes.isValid());
+
+        Product validProduct = new Product(0, 1, "General", "Valid Product", "Description", new BigDecimal("49.99"), 25, 5);
+        assertTrue("Valid product must pass", InputBoundaryValidator.validateProduct(validProduct).isValid());
+
+        // 3. Category validation bounds
+        assertFalse("Empty category must be rejected", InputBoundaryValidator.validateCategory("").isValid());
+        assertTrue("Valid category must pass", InputBoundaryValidator.validateCategory("Wearable Tech").isValid());
+
+        // 4. Order & OrderItem validation bounds
+        OrderItem invalidItem = new OrderItem(0, 0, 1, "Item", 0, 10.0);
+        assertFalse("Zero quantity order item must be rejected", InputBoundaryValidator.validateOrderItem(invalidItem).isValid());
+
+        OrderItem validItem = new OrderItem(0, 0, 1, "Item", 2, 10.0);
+        assertTrue("Valid quantity order item must pass", InputBoundaryValidator.validateOrderItem(validItem).isValid());
+    }
+
+    // ---------------------------------------------------------------
+    // 12. Live Persistence Layer Sanitization & Boundary Defense
+    // ---------------------------------------------------------------
+    private static void testSanitizedPersistenceLayer() {
+        ProductDAO productDAO = new ProductDAO();
+
+        // 1. Attempt invalid product insertion (negative price) -> DAO should reject before executing SQL
+        Product invalidPriceProd = new Product(0, 1, "General", "Unsafe Product", "Desc", new BigDecimal("-9.99"), 5, 5);
+        int invalidResult = productDAO.addProduct(invalidPriceProd);
+        assertEquals("ProductDAO must reject invalid negative price", -1, invalidResult);
+
+        // 2. Insert product with dirty HTML description and excess whitespace in name
+        String dirtyDesc = "<p>Noise-cancelling</p><script>alert('hack');</script>";
+        Product dirtyProd = new Product(0, 1, "General", "   Sanitized Wireless Buds   ", dirtyDesc, new BigDecimal("89.99"), 12, 5);
+        int generatedId = productDAO.addProduct(dirtyProd);
+        assertTrue("ProductDAO should successfully sanitize and insert product", generatedId > 0);
+
+        try {
+            Product fetched = productDAO.findById(generatedId);
+            assertNotNull("Inserted product must be retrievable", fetched);
+            assertEquals("Product name must be trimmed and normalized", "Sanitized Wireless Buds", fetched.getProductName());
+            assertFalse("Description must not contain script tags", fetched.getDescription().contains("<script>"));
+        } finally {
+            // Clean up test product
+            productDAO.deleteById(generatedId);
+        }
+
+        // 3. CategoryDAO boundary validation
+        CategoryDAO categoryDAO = new CategoryDAO();
+        int invalidCat = categoryDAO.addCategory("   ");
+        assertEquals("CategoryDAO must reject empty category name", -1, invalidCat);
     }
 
     // ---------------------------------------------------------------

@@ -16,18 +16,20 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
   * Synthetic Seed Data (`database/seed.sql`) containing demo admin, customers, catalog items, and sample transaction orders
   * Resilient JDBC Connection Pool & Proxy Recycling (`DBConnectionPool.java` & `DBConnection.java`): High-performance thread-safe connection pool with pre-lease health validation (`isValid(2)`), stale socket eviction, and dynamic proxy interception that recycles connections back to the idle pool on `conn.close()`
   * Exponential Backoff Retry Policy (`DatabaseRetryPolicy.java`): Fault-tolerance engine with randomized jitter classifying transient failures (deadlocks, lock timeouts, connection drops) vs fatal constraint errors
+  * Data Sanitization & Normalization Engine (`DataSanitizer.java`): Enterprise input sanitization with HTML/script tag stripping (`stripHtml`), character escaping (`escapeHtml`), canonical whitespace/email/phone/address normalization, column length truncation, and heuristic SQL injection pattern detection
+  * Input Boundary Validation Layer (`InputBoundaryValidator.java` & `ValidationResult.java`): Pre-persistence schema constraint and domain rule enforcement for users, products, categories, orders, and line items preventing database-level check violations
   * Model Entity Layer: `User`, `Product`, `Category`, `Order`, `OrderItem`, `CartItem`, and `Payment` with `BigDecimal` financial precision
   * Data Access Object (DAO) Persistence Suite:
-    * `UserDAO`: Authentication with SHA-256 password hashing (`PasswordUtil`), registration, contact updates, and password changes
-    * `CategoryDAO`: Dedicated category lifecycle management (full CRUD, product count aggregations, duplicate name checks, and FK safe-delete protection)
-    * `ProductDAO`: Catalog CRUD, keyword search, category filtering, stock adjustments, and low-stock queries
-    * `OrderDAO`: Atomic transactional checkout (order header + line items + payment record in a single commit), status transitions, and history
+    * `UserDAO`: Authentication with SHA-256 password hashing (`PasswordUtil`), registration, contact updates, and password changes with integrated input boundary validation and data sanitization
+    * `CategoryDAO`: Dedicated category lifecycle management (full CRUD, product count aggregations, duplicate name checks, and FK safe-delete protection) with input sanitization and length validation
+    * `ProductDAO`: Catalog CRUD, keyword search, category filtering, stock adjustments, and low-stock queries with HTML description sanitization and price/stock boundary checks
+    * `OrderDAO`: Atomic transactional checkout (order header + line items + payment record in a single commit), status transitions, history, and shipping address sanitization
     * `OrderItemDAO`: Dedicated line item persistence, transactional batch inserts, line-level sales aggregations (units sold, item revenue), and category joined lookups
     * `PaymentDAO`: Order payment persistence, test-mode simulated payment gateway integration, transaction status tracking (`PENDING`, `COMPLETED`, `REFUNDED`), and revenue audit
     * `CartDAO`: Full cart persistence (`cart_items` table) with upsert, quantity management, item removal, and total value calculation
     * `ReportDAO`: Core Qveto KPI reporting metrics, executive sales summary, low-stock reorder alerts, customer lifetime spend leaderboard, and view-backed queries
   * Utility & Security: `PasswordUtil` providing SHA-256 hashing compatible with MySQL `SHA2()`
-  * Database Integrity & Automated Verification Suite (`DatabaseIntegrityTest.java` & `test.bat`): Automated 9-stage test harness verifying SHA-256 password hashing, BigDecimal financial precision, inventory stock decrements and cancellation restoration, foreign-key safe-deletion constraints, ReportDAO analytical consistency, DatabaseRetryPolicy exponential backoff, DBConnectionPool proxy recycling, live atomic transaction rollback safety, and atomic order-payment commits.
+  * Database Integrity & Automated Verification Suite (`DatabaseIntegrityTest.java` & `test.bat`): Automated 12-stage test harness verifying SHA-256 password hashing, BigDecimal financial precision, inventory stock decrements and cancellation restoration, foreign-key safe-deletion constraints, ReportDAO analytical consistency, DatabaseRetryPolicy exponential backoff, DBConnectionPool proxy recycling, live atomic transaction rollback safety, atomic order-payment commits, DataSanitizer normalization & XSS defense, InputBoundaryValidator rule enforcement, and sanitized DAO persistence validation.
   * Report Export & Audit Engine (`ReportExportUtil.java`): Enterprise sales audit and reporting export engine providing RFC 4180 compliant CSV exports (`sales_orders_audit.csv`, `order_line_items_audit.csv`, `product_inventory_audit.csv`, `customer_spend_audit.csv`) and comprehensive multi-section plain-text sales audit dossiers (`comprehensive_sales_audit.txt`) with dual-engine MySQL/in-memory fallback.
 * **Member 2 (UI, Presentation & Store Management):**
   * Java Swing Authentication Frames (`LoginFrame`) with password visibility toggle (Show/Hide)
@@ -99,7 +101,7 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
 Double-click `run.bat` in the project root to compile and launch the application.
 
 #### Automated Database Integrity & Rollback Tests
-Double-click `test.bat` in the project root (or run `java -cp "bin;<path-to-mysql-connector-j.jar>" com.qveto.ecommerce.util.DatabaseIntegrityTest`) to execute the 9-stage automated verification suite.
+Double-click `test.bat` in the project root (or run `java -cp "bin;<path-to-mysql-connector-j.jar>" com.qveto.ecommerce.util.DatabaseIntegrityTest`) to execute the 12-stage automated verification suite.
 
 #### Using Maven (Recommended)
 ```bash

@@ -3,6 +3,9 @@ package com.qveto.ecommerce.dao;
 import com.qveto.ecommerce.DBConnection;
 import com.qveto.ecommerce.model.Order;
 import com.qveto.ecommerce.model.OrderItem;
+import com.qveto.ecommerce.util.DataSanitizer;
+import com.qveto.ecommerce.util.InputBoundaryValidator;
+import com.qveto.ecommerce.util.ValidationResult;
 
 import java.sql.*;
 import java.util.ArrayList;
@@ -37,6 +40,15 @@ public class OrderDAO {
      * @return the auto-generated order_id, or -1 if the transaction failed
      */
     public int placeOrder(Order order) {
+        ValidationResult val = InputBoundaryValidator.validateOrder(order);
+        if (!val.isValid()) {
+            System.err.println("[OrderDAO] placeOrder() validation failed: " + val.getCombinedErrorMessage());
+            return -1;
+        }
+
+        String cleanAddress = DataSanitizer.normalizeAddress(order.getShippingAddress());
+        cleanAddress = DataSanitizer.truncate(cleanAddress, 255);
+
         String orderSql   = "INSERT INTO orders (user_id, total_amount, order_status, "
                           + "payment_method, shipping_address) VALUES (?, ?, ?, ?, ?)";
         String paymentSql = "INSERT INTO payments (order_id, payment_method, payment_status, amount) "
@@ -56,7 +68,7 @@ public class OrderDAO {
                 orderStmt.setDouble(2, order.getTotalAmount());
                 orderStmt.setString(3, order.getOrderStatus());
                 orderStmt.setString(4, order.getPaymentMethod());
-                orderStmt.setString(5, order.getShippingAddress());
+                orderStmt.setString(5, cleanAddress);
 
                 orderStmt.executeUpdate();
 

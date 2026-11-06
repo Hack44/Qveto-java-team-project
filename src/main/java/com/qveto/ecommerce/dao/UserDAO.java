@@ -2,7 +2,10 @@ package com.qveto.ecommerce.dao;
 
 import com.qveto.ecommerce.DBConnection;
 import com.qveto.ecommerce.model.User;
+import com.qveto.ecommerce.util.DataSanitizer;
+import com.qveto.ecommerce.util.InputBoundaryValidator;
 import com.qveto.ecommerce.util.PasswordUtil;
+import com.qveto.ecommerce.util.ValidationResult;
 
 import java.sql.*;
 import java.util.ArrayList;
@@ -70,6 +73,17 @@ public class UserDAO {
      */
     public int registerCustomer(String fullName, String email, String password,
                                  String phone, String address) {
+        String cleanName = DataSanitizer.sanitizeText(fullName, 100);
+        String cleanEmail = DataSanitizer.normalizeEmail(email);
+        String cleanPhone = DataSanitizer.normalizePhone(phone);
+        String cleanAddress = DataSanitizer.normalizeAddress(address);
+
+        ValidationResult val = InputBoundaryValidator.validateUserRegistration(cleanName, cleanEmail, password, cleanPhone, cleanAddress);
+        if (!val.isValid()) {
+            System.err.println("[UserDAO] registerCustomer() validation failed: " + val.getCombinedErrorMessage());
+            return -1;
+        }
+
         String hashedPassword = PasswordUtil.hash(password);
         String sql = "INSERT INTO users (full_name, email, password_hash, role, phone, address) "
                    + "VALUES (?, ?, ?, 'CUSTOMER', ?, ?)";
@@ -77,11 +91,11 @@ public class UserDAO {
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
 
-            stmt.setString(1, fullName);
-            stmt.setString(2, email);
+            stmt.setString(1, cleanName);
+            stmt.setString(2, cleanEmail);
             stmt.setString(3, hashedPassword != null ? hashedPassword : password);
-            stmt.setString(4, phone);
-            stmt.setString(5, address);
+            stmt.setString(4, cleanPhone.isEmpty() ? null : cleanPhone);
+            stmt.setString(5, cleanAddress.isEmpty() ? null : cleanAddress);
 
             int affected = stmt.executeUpdate();
             if (affected > 0) {
@@ -213,14 +227,19 @@ public class UserDAO {
      * @return {@code true} if the update was successful
      */
     public boolean updateContactInfo(int userId, String fullName, String phone, String address) {
+        if (userId <= 0) return false;
+        String cleanName = DataSanitizer.sanitizeText(fullName, 100);
+        String cleanPhone = DataSanitizer.normalizePhone(phone);
+        String cleanAddress = DataSanitizer.normalizeAddress(address);
+
         String sql = "UPDATE users SET full_name = ?, phone = ?, address = ? WHERE user_id = ?";
 
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
-            stmt.setString(1, fullName);
-            stmt.setString(2, phone);
-            stmt.setString(3, address);
+            stmt.setString(1, cleanName);
+            stmt.setString(2, cleanPhone.isEmpty() ? null : cleanPhone);
+            stmt.setString(3, cleanAddress.isEmpty() ? null : cleanAddress);
             stmt.setInt(4, userId);
 
             return stmt.executeUpdate() > 0;

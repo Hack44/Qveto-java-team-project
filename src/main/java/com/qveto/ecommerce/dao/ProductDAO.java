@@ -3,6 +3,9 @@ package com.qveto.ecommerce.dao;
 import com.qveto.ecommerce.DBConnection;
 import com.qveto.ecommerce.model.Category;
 import com.qveto.ecommerce.model.Product;
+import com.qveto.ecommerce.util.DataSanitizer;
+import com.qveto.ecommerce.util.InputBoundaryValidator;
+import com.qveto.ecommerce.util.ValidationResult;
 
 import java.math.BigDecimal;
 import java.sql.*;
@@ -31,6 +34,15 @@ public class ProductDAO {
      * @return the auto-generated product_id, or -1 on failure
      */
     public int addProduct(Product product) {
+        ValidationResult val = InputBoundaryValidator.validateProduct(product);
+        if (!val.isValid()) {
+            System.err.println("[ProductDAO] addProduct() validation failed: " + val.getCombinedErrorMessage());
+            return -1;
+        }
+
+        String cleanName = DataSanitizer.sanitizeText(product.getProductName(), 150);
+        String cleanDesc = DataSanitizer.stripHtml(product.getDescription());
+
         String sql = "INSERT INTO products (category_id, product_name, description, price, "
                    + "stock_quantity, low_stock_threshold) VALUES (?, ?, ?, ?, ?, ?)";
 
@@ -38,8 +50,8 @@ public class ProductDAO {
              PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
 
             stmt.setInt(1, product.getCategoryId());
-            stmt.setString(2, product.getProductName());
-            stmt.setString(3, product.getDescription());
+            stmt.setString(2, cleanName);
+            stmt.setString(3, cleanDesc);
             stmt.setBigDecimal(4, product.getPrice());
             stmt.setInt(5, product.getStockQuantity());
             stmt.setInt(6, product.getLowStockThreshold());
@@ -242,6 +254,16 @@ public class ProductDAO {
      * @return {@code true} if the update was applied
      */
     public boolean updateProduct(Product product) {
+        if (product == null || product.getProductId() <= 0) return false;
+        ValidationResult val = InputBoundaryValidator.validateProduct(product);
+        if (!val.isValid()) {
+            System.err.println("[ProductDAO] updateProduct() validation failed: " + val.getCombinedErrorMessage());
+            return false;
+        }
+
+        String cleanName = DataSanitizer.sanitizeText(product.getProductName(), 150);
+        String cleanDesc = DataSanitizer.stripHtml(product.getDescription());
+
         String sql = "UPDATE products SET category_id = ?, product_name = ?, description = ?, "
                    + "price = ?, stock_quantity = ?, low_stock_threshold = ? "
                    + "WHERE product_id = ?";
@@ -250,8 +272,8 @@ public class ProductDAO {
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
             stmt.setInt(1, product.getCategoryId());
-            stmt.setString(2, product.getProductName());
-            stmt.setString(3, product.getDescription());
+            stmt.setString(2, cleanName);
+            stmt.setString(3, cleanDesc);
             stmt.setBigDecimal(4, product.getPrice());
             stmt.setInt(5, product.getStockQuantity());
             stmt.setInt(6, product.getLowStockThreshold());
