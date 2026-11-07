@@ -14,16 +14,13 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
   * Database Migration v2 (`database/migration_v2.sql`) with query performance indexes (`idx_products_category`, `idx_orders_status`, etc.) and `updated_at` audit triggers
   * Database Migration v3 (`database/migration_v3.sql`) with 6 reporting and analytics views (`view_sales_summary`, `view_top_selling_products`, `view_low_stock_alerts`, `view_category_sales_summary`, `view_customer_order_history`, `view_payment_method_distribution`)
   * Synthetic Seed Data (`database/seed.sql`) containing demo admin, customers, catalog items, and sample transaction orders
-  * Resilient JDBC Connection Pool & Proxy Recycling (`DBConnectionPool.java` & `DBConnection.java`): High-performance thread-safe connection pool with pre-lease health validation (`isValid(2)`), stale socket eviction, and dynamic proxy interception that recycles connections back to the idle pool on `conn.close()`
-  * Exponential Backoff Retry Policy (`DatabaseRetryPolicy.java`): Fault-tolerance engine with randomized jitter classifying transient failures (deadlocks, lock timeouts, connection drops) vs fatal constraint errors
-  * Data Sanitization & Normalization Engine (`DataSanitizer.java`): Enterprise input sanitization with HTML/script tag stripping (`stripHtml`), character escaping (`escapeHtml`), canonical whitespace/email/phone/address normalization, column length truncation, and heuristic SQL injection pattern detection
-  * Input Boundary Validation Layer (`InputBoundaryValidator.java` & `ValidationResult.java`): Pre-persistence schema constraint and domain rule enforcement for users, products, categories, orders, and line items preventing database-level check violations
+  * Singleton JDBC Connection Factory (`DBConnection.java`) with automated properties loading and resilient fallback
   * Model Entity Layer: `User`, `Product`, `Category`, `Order`, `OrderItem`, `CartItem`, and `Payment` with `BigDecimal` financial precision
   * Data Access Object (DAO) Persistence Suite:
-    * `UserDAO`: Authentication with SHA-256 password hashing (`PasswordUtil`), registration, contact updates, and password changes with integrated input boundary validation and data sanitization
-    * `CategoryDAO`: Dedicated category lifecycle management (full CRUD, product count aggregations, duplicate name checks, and FK safe-delete protection) with input sanitization and length validation
-    * `ProductDAO`: Catalog CRUD, keyword search, category filtering, stock adjustments, and low-stock queries with HTML description sanitization and price/stock boundary checks
-    * `OrderDAO`: Atomic transactional checkout (order header + line items + payment record in a single commit), status transitions, history, and shipping address sanitization
+    * `UserDAO`: Authentication with SHA-256 password hashing (`PasswordUtil`), registration, contact updates, and password changes
+    * `CategoryDAO`: Dedicated category lifecycle management (full CRUD, product count aggregations, duplicate name checks, and FK safe-delete protection)
+    * `ProductDAO`: Catalog CRUD, keyword search, category filtering, stock adjustments, and low-stock queries
+    * `OrderDAO`: Atomic transactional checkout (order header + line items + payment record in a single commit), status transitions, and history
     * `OrderItemDAO`: Dedicated line item persistence, transactional batch inserts, line-level sales aggregations (units sold, item revenue), and category joined lookups
     * `PaymentDAO`: Order payment persistence, test-mode simulated payment gateway integration, transaction status tracking (`PENDING`, `COMPLETED`, `REFUNDED`), and revenue audit
     * `CartDAO`: Full cart persistence (`cart_items` table) with upsert, quantity management, item removal, and total value calculation
@@ -37,6 +34,19 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
   * Customer Registration with form validation, email uniqueness checks, and database persistence
   * Application Dashboard Shell & Navigation (`DashboardFrame`)
   * Product Discovery: Live keyword search, dynamic category filtering, multi-criteria sorting (Price Low-to-High, Price High-to-Low, Name A-Z, Highest Stock), quick in-stock availability toggle, and Product Details Modal (`ProductDetailsDialog`) with verified buyer 5-star ratings, review counts, and customer feedback tabs
+  * Customer Wishlist & Saved Products Engine (`WishlistStore.java` & `DashboardFrame`):
+    * Dedicated **"Wishlist"** Tab for customers to curate saved items and monitor price & inventory availability
+    * 1-Click `"♡ Save to Wishlist"` button in both Customer Catalog table and Product Details modal with dynamic `"♥ In Wishlist"` state toggle
+    * Seamless `"🛒 Move to Cart"` action with instant wishlist transfer, inventory validation, and cart badge count synchronization
+  * Customer Post-Delivery Return & Refund Management Suite (`OrderReturnDialog.java` & `OrderStore.java`):
+    * 1-Click `"🔄 Request Return / Refund"` button on delivered orders in Order History
+    * Customer return submission dialog with structured reason categories (Defective, Incorrect item, Mismatched description, Changed mind) and refund preference (Original Payment Source vs Store Credit)
+    * Real-time status transitions to `RETURN_REQUESTED` with automated customer and administrator broadcast dispatching
+    * Admin 1-Click `"⚡ Approve Return & Refund"` control in Order Fulfillment Management that automatically issues financial refund, replenishes inventory stock, and notifies customer
+  * Real-Time Store Activity & Notification Broadcast Hub (`Notification.java`, `NotificationStore.java`, `NotificationCenterDialog.java`):
+    * Prominent header notification bell button with live unread counter (`🔔 Alerts (N)`)
+    * Interactive modal drawer categorizing order delivery updates (📦), inventory restock warnings (⚠️), promotional vouchers (🎟️), and return requests (🔄)
+    * 1-Click mark-as-read, click-to-toggle, and dismiss actions
   * Customer Verified Reviews & Rating System (`Review.java`, `ReviewStore.java`, `ProductReviewDialog.java`):
     * Interactive Star Rating Selector (`★`) with headline and comments for customer feedback on delivered purchases
     * Live recalculation of average product star ratings and review counts
@@ -76,9 +86,9 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
     * Top-Selling Products Velocity Leaderboard (`JTable` with ranking, volume, and revenue)
     * Multi-Tab Analytics Breakdown: Order Lifecycle Distribution, Category Revenue Breakdown, Customer Lifetime Value (CLV) Leaderboard, and Payment Channel Distribution
     * One-click Executive Performance Report text export (`qveto_executive_report.txt`) and Sales Audit CSV export (`ReportExportUtil`)
-  * Automated Regression & Integration Test Suite (`StoreWorkflowIntegrationTest.java`): End-to-end integration tests verifying promotional coupon discounts, stock adjustments, order cancellations, CSV exports, date filtering, PDF generation, and customer reviews
+  * Automated Regression & Integration Test Suite (`StoreWorkflowIntegrationTest.java`): 9-stage automated test suite verifying promotional coupon discounts, stock adjustments, order cancellations, CSV exports, date filtering, PDF generation, customer reviews, customer wishlist transfers, return request and refund approvals, and store notifications
   * Real-Time Database Status Indicator (`DBStatusUtil`): Visual connectivity pill (`● MySQL Active` vs `○ Standalone Demo`) across login and dashboard headers
-  * Centralized Store Architecture (`UserStore`, `ProductStore`, `OrderStore`, `CategoryStore`, `CartStore`, `ReportStore`, `PaymentStore`, `CouponStore`, `ReviewStore`) coordinating between JDBC DAOs and resilient in-memory fallback state
+  * Centralized Store Architecture (`UserStore`, `ProductStore`, `OrderStore`, `CategoryStore`, `CartStore`, `ReportStore`, `PaymentStore`, `CouponStore`, `ReviewStore`, `WishlistStore`, `NotificationStore`) coordinating between JDBC DAOs and resilient in-memory fallback state
   * Centralized Form Validation Utility (`ValidationUtil`)
 * **Member 3:** Catalog, Cart & Order Placement Services
 * **Member 4:** Inventory Consistency, Invoices & Sales Reporting
@@ -130,7 +140,7 @@ java -cp bin com.qveto.ecommerce.StoreWorkflowIntegrationTest
 
 | Role | Username / Email | Password | Features Accessible |
 | :--- | :--- | :--- | :--- |
-| **Customer** | `customer@qveto.com` | `pass123` | Product catalog with live search/filter, product details modal with customer reviews, cart, promo coupons, checkout with live inventory deduction, order history, order tracking stepper, PDF & text invoice export, order review submission, cancel orders with stock replenishment, edit profile, change password |
-| **Admin** | `admin` | `admin123` | Inventory catalog management (add, edit, restock, delete products, low-stock filter, CSV export), low stock procurement hub, category management dialog, executive analytics dashboard with date-range filtering, customer order fulfillment management (update status, view invoices, master CSV export), user account management (view all users, search/filter, view dossier, deactivate accounts), sales KPI overview |
+| **Customer** | `customer@qveto.com` | `pass123` | Product catalog with live search/filter, product details modal with customer reviews, saved wishlist with 1-click cart transfer, promo coupons, checkout with live inventory deduction, order history, order tracking stepper, PDF & text invoice export, order review submission, return & refund requests, cancel orders with stock replenishment, notification hub, edit profile, change password |
+| **Admin** | `admin` | `admin123` | Inventory catalog management (add, edit, restock, delete products, low-stock filter, CSV export), low stock procurement hub, category management dialog, executive analytics dashboard with date-range filtering, customer order fulfillment management (update status, approve return requests, view invoices, master CSV export), user account management (view all users, search/filter, view dossier, deactivate accounts), store activity notifications, sales KPI overview |
 
 *(You can also use the **Register** tab to create a new customer account with full input validation and duplicate-email detection).*

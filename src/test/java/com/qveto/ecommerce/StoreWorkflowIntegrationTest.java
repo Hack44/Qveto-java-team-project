@@ -20,6 +20,9 @@ import java.util.Map;
  * 4. Executive Analytics & Dynamic Date-Range Filtering
  * 5. Standalone PDF 1.4 Vector Invoice Receipt Generation
  * 6. Verified Customer Product Review & 5-Star Rating Calculations
+ * 7. Customer Saved Items & Product Wishlist Management
+ * 8. Post-Delivery Return / Refund Lifecycle & Automated Inventory Replenishment
+ * 9. Real-Time Store Notifications & System Broadcast Hub
  */
 public class StoreWorkflowIntegrationTest {
 
@@ -37,6 +40,9 @@ public class StoreWorkflowIntegrationTest {
         runTest("Executive Date-Range Sales Reporting", StoreWorkflowIntegrationTest::testDateRangeReporting);
         runTest("PDF 1.4 Vector Invoice Binary Generation", StoreWorkflowIntegrationTest::testPdfInvoiceGeneration);
         runTest("Customer Verified Reviews & Star Ratings", StoreWorkflowIntegrationTest::testReviewStoreCalculations);
+        runTest("Customer Wishlist & Saved Items", StoreWorkflowIntegrationTest::testWishlistStoreOperations);
+        runTest("Order Return / Refund & Stock Replenishment", StoreWorkflowIntegrationTest::testReturnRequestAndApprovalWorkflow);
+        runTest("Store Notifications & Broadcast Hub", StoreWorkflowIntegrationTest::testNotificationCenterStore);
 
         System.out.println("========================================================================");
         System.out.println(String.format("TEST EXECUTION COMPLETED: %d PASSED, %d FAILED", totalPassed, totalFailed));
@@ -233,5 +239,88 @@ public class StoreWorkflowIntegrationTest {
         assertEquals(initialCount + 1, ReviewStore.getReviewCount(productId), "Review count must increment by 1");
         List<Review> reviews = ReviewStore.getReviewsForProduct(productId);
         assertEquals("Exceptional Fidelity", reviews.get(0).getHeadline(), "Latest review must be at top of list");
+    }
+
+    // ========================================================================
+    // 7. Customer Wishlist Store Operations Tests
+    // ========================================================================
+    private static void testWishlistStoreOperations() {
+        int testUserId = 999;
+        WishlistStore.clearWishlist(testUserId);
+        assertEquals(0, WishlistStore.getWishlistCount(testUserId), "Cleared wishlist must be empty");
+
+        Product p1 = ProductStore.findById(101);
+        assertTrue(p1 != null, "Product 101 should exist");
+
+        // Add to wishlist
+        boolean added = WishlistStore.addToWishlist(testUserId, p1);
+        assertTrue(added, "Initial add to wishlist should succeed");
+        assertTrue(WishlistStore.isInWishlist(testUserId, 101), "Product 101 should be marked in wishlist");
+        assertEquals(1, WishlistStore.getWishlistCount(testUserId), "Wishlist count should be 1");
+
+        // Prevent duplicate add
+        boolean duplicate = WishlistStore.addToWishlist(testUserId, p1);
+        assertTrue(!duplicate, "Adding duplicate product should be rejected");
+        assertEquals(1, WishlistStore.getWishlistCount(testUserId), "Wishlist count must remain 1");
+
+        // Remove from wishlist
+        boolean removed = WishlistStore.removeFromWishlist(testUserId, 101);
+        assertTrue(removed, "Removing product from wishlist should succeed");
+        assertTrue(!WishlistStore.isInWishlist(testUserId, 101), "Product 101 should no longer be in wishlist");
+        assertEquals(0, WishlistStore.getWishlistCount(testUserId), "Wishlist count should be 0");
+    }
+
+    // ========================================================================
+    // 8. Order Return / Refund Lifecycle & Stock Replenishment Tests
+    // ========================================================================
+    private static void testReturnRequestAndApprovalWorkflow() {
+        Product p = ProductStore.findById(103);
+        assertTrue(p != null, "Product 103 must exist");
+        int stockBefore = p.getStockQuantity();
+
+        // Place a test order for 2 units of p103
+        Order testOrder = new Order(0, "ORD-TEST-RET", 1, 39.98, "DELIVERED", "PREPAID", "2026-11-06");
+        testOrder.addItem(new OrderItem(0, 0, 103, p.getProductName(), 2, 19.99));
+        testOrder = OrderStore.placeOrder(testOrder);
+
+        // After order placement, stock was reduced by 2
+        assertEquals(stockBefore - 2, ProductStore.findById(103).getStockQuantity(), "Stock should be reduced after placement");
+        assertTrue(testOrder.isReturnable(), "DELIVERED order should be eligible for return");
+
+        // Request return
+        boolean requested = OrderStore.requestReturn(testOrder, "Item arrived damaged during transit");
+        assertTrue(requested, "Return request should succeed");
+        assertEquals("RETURN_REQUESTED", testOrder.getOrderStatus(), "Status should transition to RETURN_REQUESTED");
+
+        // Admin approves return
+        boolean approved = OrderStore.approveReturn(testOrder);
+        assertTrue(approved, "Admin return approval should succeed");
+        assertEquals("REFUNDED", testOrder.getOrderStatus(), "Status should transition to REFUNDED");
+
+        // Product stock must be automatically replenished by 2 units
+        assertEquals(stockBefore, ProductStore.findById(103).getStockQuantity(), "Inventory stock must be restored after refund approval");
+        Payment pay = PaymentStore.getPaymentForOrder(testOrder.getOrderId());
+        assertEquals("REFUNDED", pay.getPaymentStatus(), "Payment status must transition to REFUNDED");
+    }
+
+    // ========================================================================
+    // 9. Real-Time Store Notifications & Broadcast Hub Tests
+    // ========================================================================
+    private static void testNotificationCenterStore() {
+        int testUser = 888;
+        NotificationStore.clearNotifications(testUser, "CUSTOMER");
+
+        int initialUnread = NotificationStore.getUnreadCount(testUser, "CUSTOMER");
+        NotificationStore.postOrderAlert(testUser, "Test Shipment Milestone", "Tracking ID: TRK-990812");
+
+        int unreadAfter = NotificationStore.getUnreadCount(testUser, "CUSTOMER");
+        assertTrue(unreadAfter > initialUnread, "Unread count should increment after posting alert");
+
+        List<Notification> list = NotificationStore.getNotificationsForUser(testUser, "CUSTOMER");
+        assertTrue(!list.isEmpty(), "User notifications list should contain posted alert");
+        assertEquals("Test Shipment Milestone", list.get(0).getTitle(), "Latest notification should be top of list");
+
+        NotificationStore.markAllAsRead(testUser, "CUSTOMER");
+        assertEquals(0, NotificationStore.getUnreadCount(testUser, "CUSTOMER"), "All notifications should be marked read");
     }
 }
