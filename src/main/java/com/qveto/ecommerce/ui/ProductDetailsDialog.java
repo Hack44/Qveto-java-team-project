@@ -4,6 +4,7 @@ import com.qveto.ecommerce.model.Product;
 import com.qveto.ecommerce.model.Review;
 import com.qveto.ecommerce.model.User;
 import com.qveto.ecommerce.util.ReviewStore;
+import com.qveto.ecommerce.util.WishlistStore;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -13,7 +14,7 @@ import java.util.function.Consumer;
 
 /**
  * Modal dialog displaying detailed product information, specifications,
- * live customer ratings, verified reviews, and add-to-cart action.
+ * live customer ratings, verified reviews, wishlist toggle, and add-to-cart action.
  *
  * Supports Member 2 (UI, Presentation & Store Management) product discovery requirements.
  */
@@ -91,6 +92,29 @@ public class ProductDetailsDialog extends JDialog {
         actionPanel.add(closeBtn);
 
         if (isCustomer) {
+            int userId = currentUser != null ? currentUser.getUserId() : 1;
+            boolean inWishlist = WishlistStore.isInWishlist(userId, product.getProductId());
+            JButton wishlistBtn = new JButton(inWishlist ? "♥ In Wishlist" : "♡ Save to Wishlist");
+            wishlistBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+            wishlistBtn.setBackground(inWishlist ? new Color(254, 226, 226) : new Color(241, 245, 249));
+            wishlistBtn.setForeground(inWishlist ? new Color(220, 38, 38) : new Color(51, 65, 85));
+            wishlistBtn.setFocusPainted(false);
+            wishlistBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+            wishlistBtn.addActionListener(e -> {
+                if (WishlistStore.isInWishlist(userId, product.getProductId())) {
+                    WishlistStore.removeFromWishlist(userId, product.getProductId());
+                    wishlistBtn.setText("♡ Save to Wishlist");
+                    wishlistBtn.setBackground(new Color(241, 245, 249));
+                    wishlistBtn.setForeground(new Color(51, 65, 85));
+                } else {
+                    WishlistStore.addToWishlist(userId, product);
+                    wishlistBtn.setText("♥ In Wishlist");
+                    wishlistBtn.setBackground(new Color(254, 226, 226));
+                    wishlistBtn.setForeground(new Color(220, 38, 38));
+                }
+            });
+            actionPanel.add(wishlistBtn);
+
             JButton addBtn = new JButton("Add to Cart — " + String.format("$%.2f", product.getPriceAsDouble()));
             addBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
             addBtn.setBackground(new Color(16, 185, 129));

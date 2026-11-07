@@ -12,7 +12,7 @@ public class Order {
     private String orderNumber;
     private int userId;
     private double totalAmount;
-    private String orderStatus; // PENDING, CONFIRMED, SHIPPED, DELIVERED, CANCELLED
+    private String orderStatus; // PENDING, CONFIRMED, SHIPPED, DELIVERED, RETURN_REQUESTED, REFUNDED, CANCELLED
     private String paymentMethod; // COD, PREPAID
     private String shippingAddress;
     private String orderDate;
@@ -132,5 +132,13 @@ public class Order {
      */
     public boolean isCancellable() {
         return "PENDING".equalsIgnoreCase(orderStatus) || "CONFIRMED".equalsIgnoreCase(orderStatus);
+    }
+
+    /**
+     * Determines whether this order can be returned for refund by the customer.
+     * Orders that are DELIVERED and not yet returned are eligible for return request.
+     */
+    public boolean isReturnable() {
+        return "DELIVERED".equalsIgnoreCase(orderStatus);
     }
 }
