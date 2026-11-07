@@ -20,6 +20,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * - Order placement with inventory reservation
  * - Customer order history tracking with status filtering
  * - Order cancellation with automatic inventory stock replenishment
+ * - Post-delivery return/refund request workflow and approval
  * - Admin order fulfillment updates and sales revenue KPI calculations
  */
 public class OrderStore {
@@ -125,6 +126,19 @@ public class OrderStore {
             }
         }
 
+        // Initialize corresponding payment record
+        Payment existingPayment = PaymentStore.getPaymentForOrder(order.getOrderId());
+        if (existingPayment.getPaymentId() == 0) {
+            String initialPayStatus = "COD".equalsIgnoreCase(order.getPaymentMethod()) ? "PENDING" : "COMPLETED";
+            PaymentStore.recordPayment(new Payment(0, order.getOrderId(), order.getPaymentMethod(),
+                    initialPayStatus, java.math.BigDecimal.valueOf(order.getTotalAmount()), order.getOrderDate()));
+        }
+
+        // Trigger real-time customer and admin notifications
+        NotificationStore.postOrderAlert(order.getUserId(),
+                "Order Placed Successfully (" + order.getOrderNumber() + ")",
+                "Your order for " + order.getTotalQuantity() + " item(s) totaling $" + String.format("%.2f", order.getTotalAmount()) + " has been confirmed.");
+
         return order;
     }
 
@@ -141,9 +155,11 @@ public class OrderStore {
             }
         }
 
+        Order matched = null;
         for (Order o : inMemoryOrders) {
             if (o.getOrderId() == orderId) {
                 o.setOrderStatus(newStatus);
+                matched = o;
                 break;
             }
         }
@@ -151,7 +167,18 @@ public class OrderStore {
         // Synchronize payment settlement status
         if ("DELIVERED".equalsIgnoreCase(newStatus)) {
             PaymentStore.updatePaymentStatus(orderId, "COMPLETED");
-        } else if ("CANCELLED".equalsIgnoreCase(newStatus)) {
+            if (matched != null) {
+                NotificationStore.postOrderAlert(matched.getUserId(),
+                        "Order Delivered (" + matched.getOrderNumber() + ")",
+                        "Your order has been delivered! You can now submit a verified review or download your PDF tax invoice.");
+            }
+        } else if ("SHIPPED".equalsIgnoreCase(newStatus)) {
+            if (matched != null) {
+                NotificationStore.postOrderAlert(matched.getUserId(),
+                        "Order Shipped (" + matched.getOrderNumber() + ")",
+                        "Your package has departed the fulfillment hub and is out for delivery.");
+            }
+        } else if ("CANCELLED".equalsIgnoreCase(newStatus) || "REFUNDED".equalsIgnoreCase(newStatus)) {
             PaymentStore.updatePaymentStatus(orderId, "REFUNDED");
         }
 
@@ -176,6 +203,50 @@ public class OrderStore {
 
         // Synchronize payment status
         PaymentStore.updatePaymentStatus(order.getOrderId(), "REFUNDED");
+
+        NotificationStore.postOrderAlert(order.getUserId(),
+                "Order Cancelled (" + order.getOrderNumber() + ")",
+                "Order " + order.getOrderNumber() + " was cancelled. Payment refunded and reserved inventory replenished.");
+
+        return success;
+    }
+
+    /**
+     * Submits a customer return and refund request for a delivered order.
+     */
+    public static boolean requestReturn(Order order, String reason) {
+        if (order == null || !order.isReturnable()) return false;
+
+        boolean success = updateStatus(order.getOrderId(), "RETURN_REQUESTED");
+        order.setOrderStatus("RETURN_REQUESTED");
+
+        NotificationStore.postReturnAlert(order.getUserId(), order.getOrderNumber(), reason);
+        return success;
+    }
+
+    /**
+     * Approves a customer return request, issues refund, and replenishes product inventory.
+     */
+    public static boolean approveReturn(Order order) {
+        if (order == null) return false;
+
+        boolean success = updateStatus(order.getOrderId(), "REFUNDED");
+        order.setOrderStatus("REFUNDED");
+
+        // Replenish returned stock
+        if (order.getItems() != null) {
+            for (OrderItem item : order.getItems()) {
+                ProductStore.adjustStock(item.getProductId(), item.getQuantity());
+            }
+        }
+
+        PaymentStore.updatePaymentStatus(order.getOrderId(), "REFUNDED");
+
+        NotificationStore.postOrderAlert(order.getUserId(),
+                "Return & Refund Approved (" + order.getOrderNumber() + ")",
+                "Your return request for " + order.getOrderNumber() + " has been approved. A refund of $"
+                        + String.format("%.2f", order.getTotalAmount()) + " has been initiated to your original payment mode.");
+
         return success;
     }
 

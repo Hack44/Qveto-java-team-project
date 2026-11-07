@@ -17,6 +17,9 @@ import com.qveto.ecommerce.util.ProductStore;
 import com.qveto.ecommerce.util.ReportStore;
 import com.qveto.ecommerce.util.UserStore;
 import com.qveto.ecommerce.util.ValidationUtil;
+import com.qveto.ecommerce.util.WishlistStore;
+import com.qveto.ecommerce.util.NotificationStore;
+import com.qveto.ecommerce.model.Notification;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -121,6 +124,11 @@ public class DashboardFrame extends JFrame {
     private JComboBox<String> statusFilterCombo;
     private JTextField orderSearchField;
 
+    // Header & Wishlist UI components
+    private JButton notificationBtn;
+    private DefaultTableModel wishlistTableModel;
+    private JTable wishlistTable;
+
     public DashboardFrame(User user) {
         this.currentUser = user;
         this.catalogProducts = new ArrayList<>(ProductStore.getAllProducts());
@@ -161,6 +169,21 @@ public class DashboardFrame extends JFrame {
         JLabel dbStatusBadge = new JLabel(DBStatusUtil.getStatusBadgeHtml());
         userPanel.add(dbStatusBadge);
 
+        // Real-Time Notification Center Button
+        notificationBtn = new JButton();
+        updateNotificationBadge();
+        notificationBtn.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        notificationBtn.setBackground(new Color(30, 58, 102));
+        notificationBtn.setForeground(Color.WHITE);
+        notificationBtn.setFocusPainted(false);
+        notificationBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        notificationBtn.addActionListener(e -> {
+            NotificationCenterDialog dialog = new NotificationCenterDialog(this, currentUser, this::updateNotificationBadge);
+            dialog.setVisible(true);
+            updateNotificationBadge();
+        });
+        userPanel.add(notificationBtn);
+
         JLabel userLabel = new JLabel("Welcome, " + currentUser.getFullName() + " (" + currentUser.getRole() + ")");
         userLabel.setFont(new Font("Segoe UI", Font.PLAIN, 13));
         userLabel.setForeground(new Color(220, 230, 245));
@@ -197,6 +220,7 @@ public class DashboardFrame extends JFrame {
         } else {
             tabbedPane.addTab("Browse Products", createCustomerCatalogPanel());
             tabbedPane.addTab("My Cart (" + getCartItemCount() + ")", createCustomerCartPanel());
+            tabbedPane.addTab("Wishlist (" + WishlistStore.getWishlistCount(currentUser.getUserId()) + ")", createCustomerWishlistPanel());
             tabbedPane.addTab("Order History", createCustomerOrderHistoryPanel());
             tabbedPane.addTab("My Profile", createCustomerProfilePanel());
         }
@@ -300,6 +324,14 @@ public class DashboardFrame extends JFrame {
         // Bottom Action Bar
         JPanel bottomBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 5));
         bottomBar.setBackground(Color.WHITE);
+
+        JButton wishlistBtn = new JButton("♡ Save to Wishlist");
+        wishlistBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        wishlistBtn.setBackground(new Color(241, 245, 249));
+        wishlistBtn.setForeground(new Color(51, 65, 85));
+        wishlistBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        wishlistBtn.addActionListener(e -> handleAddSelectedToWishlist());
+        bottomBar.add(wishlistBtn);
 
         JButton viewDetailsBtn = new JButton("View Product Details");
         viewDetailsBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
@@ -719,6 +751,9 @@ public class DashboardFrame extends JFrame {
     private void updateCartBadge() {
         if (!currentUser.isAdmin() && tabbedPane != null) {
             tabbedPane.setTitleAt(1, "My Cart (" + getCartItemCount() + ")");
+            if (tabbedPane.getTabCount() > 2) {
+                tabbedPane.setTitleAt(2, "Wishlist (" + WishlistStore.getWishlistCount(currentUser.getUserId()) + ")");
+            }
         }
     }
 
@@ -1189,7 +1224,7 @@ public class DashboardFrame extends JFrame {
         toolBar.setBackground(Color.WHITE);
 
         toolBar.add(new JLabel("Filter by Status:"));
-        statusFilterCombo = new JComboBox<>(new String[]{"ALL", "PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"});
+        statusFilterCombo = new JComboBox<>(new String[]{"ALL", "PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "RETURN_REQUESTED", "REFUNDED", "CANCELLED"});
         statusFilterCombo.addActionListener(e -> applyOrderFilters());
         toolBar.add(statusFilterCombo);
 
@@ -1247,6 +1282,14 @@ public class DashboardFrame extends JFrame {
         rateBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
         rateBtn.addActionListener(e -> handleReviewDeliveredOrder());
         actionRow.add(rateBtn);
+
+        JButton returnBtn = new JButton("🔄 Request Return / Refund");
+        returnBtn.setBackground(new Color(217, 119, 6));
+        returnBtn.setForeground(Color.WHITE);
+        returnBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        returnBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        returnBtn.addActionListener(e -> handleRequestOrderReturn());
+        actionRow.add(returnBtn);
 
         JButton viewDetailsBtn = new JButton("View Order Details / Invoice");
         viewDetailsBtn.setBackground(new Color(15, 23, 42));
@@ -1772,7 +1815,7 @@ public class DashboardFrame extends JFrame {
         toolBar.setBackground(Color.WHITE);
 
         toolBar.add(new JLabel("Status:"));
-        adminOrderStatusFilterCombo = new JComboBox<>(new String[]{"ALL", "PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"});
+        adminOrderStatusFilterCombo = new JComboBox<>(new String[]{"ALL", "PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "RETURN_REQUESTED", "REFUNDED", "CANCELLED"});
         adminOrderStatusFilterCombo.addActionListener(e -> applyAdminOrderFilters());
         toolBar.add(adminOrderStatusFilterCombo);
 
@@ -1804,6 +1847,14 @@ public class DashboardFrame extends JFrame {
         updateStatusBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
         updateStatusBtn.addActionListener(e -> handleAdminUpdateOrderStatus());
         toolBar.add(updateStatusBtn);
+
+        JButton approveReturnBtn = new JButton("⚡ Approve Return & Refund");
+        approveReturnBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        approveReturnBtn.setBackground(new Color(217, 119, 6));
+        approveReturnBtn.setForeground(Color.WHITE);
+        approveReturnBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        approveReturnBtn.addActionListener(e -> handleApproveReturnFromAdmin());
+        toolBar.add(approveReturnBtn);
 
         JButton viewOrderBtn = new JButton("View Invoice");
         viewOrderBtn.setFont(new Font("Segoe UI", Font.PLAIN, 12));
@@ -2707,6 +2758,285 @@ public class DashboardFrame extends JFrame {
     private JPanel createKpiCard(String title, String value, Color accentColor) {
         JLabel val = new JLabel(value);
         return createKpiCard(title, val, accentColor);
+    }
+
+    // ==========================================
+    // NOTIFICATION CENTER BADGE & CONTROLS
+    // ==========================================
+
+    public void updateNotificationBadge() {
+        if (notificationBtn == null) return;
+        int count = NotificationStore.getUnreadCount(currentUser.getUserId(), currentUser.getRole());
+        if (count > 0) {
+            notificationBtn.setText("🔔 Alerts (" + count + ")");
+            notificationBtn.setBackground(new Color(220, 38, 38));
+        } else {
+            notificationBtn.setText("🔔 Alerts");
+            notificationBtn.setBackground(new Color(30, 58, 102));
+        }
+    }
+
+    // ==========================================
+    // CUSTOMER WISHLIST SCREEN & CONTROLS
+    // ==========================================
+
+    private JPanel createCustomerWishlistPanel() {
+        JPanel panel = new JPanel(new BorderLayout(10, 10));
+        panel.setBackground(Color.WHITE);
+        panel.setBorder(new EmptyBorder(15, 15, 15, 15));
+
+        // Wishlist Top Banner
+        JPanel banner = new JPanel(new BorderLayout());
+        banner.setBackground(new Color(248, 250, 252));
+        banner.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(226, 232, 240)),
+                new EmptyBorder(12, 16, 12, 16)
+        ));
+
+        JLabel title = new JLabel("My Saved Items & Wishlist");
+        title.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        title.setForeground(new Color(15, 23, 42));
+
+        JLabel sub = new JLabel("Save products you love and quickly transfer them to your cart when ready to purchase.");
+        sub.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        sub.setForeground(new Color(100, 116, 139));
+
+        JPanel textStack = new JPanel(new GridLayout(2, 1, 0, 2));
+        textStack.setOpaque(false);
+        textStack.add(title);
+        textStack.add(sub);
+        banner.add(textStack, BorderLayout.WEST);
+
+        panel.add(banner, BorderLayout.NORTH);
+
+        // Wishlist Table
+        String[] columns = {"ID", "Product Name", "Category", "Unit Price ($)", "Stock Status", "Availability"};
+        wishlistTableModel = new DefaultTableModel(columns, 0) {
+            @Override
+            public boolean isCellEditable(int row, int col) {
+                return false;
+            }
+        };
+
+        wishlistTable = new JTable(wishlistTableModel);
+        wishlistTable.setRowHeight(28);
+        wishlistTable.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        wishlistTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 12));
+
+        DefaultTableCellRenderer centerRenderer = new DefaultTableCellRenderer();
+        centerRenderer.setHorizontalAlignment(SwingConstants.CENTER);
+        wishlistTable.getColumnModel().getColumn(0).setCellRenderer(centerRenderer);
+        wishlistTable.getColumnModel().getColumn(4).setCellRenderer(centerRenderer);
+        wishlistTable.getColumnModel().getColumn(5).setCellRenderer(centerRenderer);
+
+        DefaultTableCellRenderer rightRenderer = new DefaultTableCellRenderer();
+        rightRenderer.setHorizontalAlignment(SwingConstants.RIGHT);
+        wishlistTable.getColumnModel().getColumn(3).setCellRenderer(rightRenderer);
+
+        refreshWishlistTable();
+
+        JScrollPane scrollPane = new JScrollPane(wishlistTable);
+        panel.add(scrollPane, BorderLayout.CENTER);
+
+        // Action Controls
+        JPanel actionRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 5));
+        actionRow.setBackground(Color.WHITE);
+
+        JButton clearBtn = new JButton("Clear All");
+        clearBtn.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        clearBtn.addActionListener(e -> {
+            if (WishlistStore.getWishlistCount(currentUser.getUserId()) == 0) return;
+            if (ValidationUtil.showConfirm(this, "Are you sure you want to clear your wishlist?", "Clear Wishlist")) {
+                WishlistStore.clearWishlist(currentUser.getUserId());
+                refreshWishlistTable();
+                updateCartBadge();
+            }
+        });
+        actionRow.add(clearBtn);
+
+        JButton removeBtn = new JButton("🗑 Remove");
+        removeBtn.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        removeBtn.addActionListener(e -> handleRemoveFromWishlist());
+        actionRow.add(removeBtn);
+
+        JButton viewDetailsBtn = new JButton("View Details");
+        viewDetailsBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        viewDetailsBtn.setBackground(new Color(15, 23, 42));
+        viewDetailsBtn.setForeground(Color.WHITE);
+        viewDetailsBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        viewDetailsBtn.addActionListener(e -> handleViewWishlistProductDetails());
+        actionRow.add(viewDetailsBtn);
+
+        JButton moveToCartBtn = new JButton("🛒 Move to Cart");
+        moveToCartBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        moveToCartBtn.setBackground(new Color(16, 185, 129));
+        moveToCartBtn.setForeground(Color.WHITE);
+        moveToCartBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        moveToCartBtn.addActionListener(e -> handleMoveWishlistToCart());
+        actionRow.add(moveToCartBtn);
+
+        panel.add(actionRow, BorderLayout.SOUTH);
+        return panel;
+    }
+
+    private void refreshWishlistTable() {
+        if (wishlistTableModel == null) return;
+        wishlistTableModel.setRowCount(0);
+        List<Product> wishlist = WishlistStore.getWishlist(currentUser.getUserId());
+        for (Product p : wishlist) {
+            wishlistTableModel.addRow(new Object[]{
+                    p.getProductId(),
+                    p.getProductName(),
+                    p.getCategory(),
+                    String.format("%.2f", p.getPriceAsDouble()),
+                    p.getStockQuantity() + " units",
+                    p.getStockStatus()
+            });
+        }
+    }
+
+    private Product getSelectedWishlistProduct() {
+        if (wishlistTable == null) return null;
+        int row = wishlistTable.getSelectedRow();
+        if (row < 0) {
+            ValidationUtil.showWarning(this, "Please select an item from your wishlist table.", "No Item Selected");
+            return null;
+        }
+        int productId = (int) wishlistTableModel.getValueAt(row, 0);
+        for (Product p : WishlistStore.getWishlist(currentUser.getUserId())) {
+            if (p.getProductId() == productId) {
+                return p;
+            }
+        }
+        return null;
+    }
+
+    private void handleRemoveFromWishlist() {
+        Product p = getSelectedWishlistProduct();
+        if (p == null) return;
+
+        WishlistStore.removeFromWishlist(currentUser.getUserId(), p.getProductId());
+        refreshWishlistTable();
+        updateCartBadge();
+        ValidationUtil.showSuccess(this, "<b>" + p.getProductName() + "</b> removed from your wishlist.", "Item Removed");
+    }
+
+    private void handleViewWishlistProductDetails() {
+        Product p = getSelectedWishlistProduct();
+        if (p == null) return;
+
+        ProductDetailsDialog dialog = new ProductDetailsDialog(this, p, currentUser, prod -> {
+            addProductToCart(prod.getProductId(), prod.getProductName(), prod.getPriceAsDouble());
+        });
+        dialog.setVisible(true);
+        refreshWishlistTable();
+        updateCartBadge();
+    }
+
+    private void handleMoveWishlistToCart() {
+        Product p = getSelectedWishlistProduct();
+        if (p == null) return;
+
+        if (p.isOutOfStock()) {
+            ValidationUtil.showWarning(this, "This product is currently out of stock and cannot be added to cart.", "Out of Stock");
+            return;
+        }
+
+        addProductToCart(p.getProductId(), p.getProductName(), p.getPriceAsDouble());
+        WishlistStore.removeFromWishlist(currentUser.getUserId(), p.getProductId());
+        refreshWishlistTable();
+        updateCartBadge();
+    }
+
+    private void handleAddSelectedToWishlist() {
+        Product selected = getSelectedCustomerProduct();
+        if (selected == null) return;
+
+        boolean added = WishlistStore.addToWishlist(currentUser.getUserId(), selected);
+        if (added) {
+            updateCartBadge();
+            refreshWishlistTable();
+            ValidationUtil.showSuccess(this,
+                    "<b>" + selected.getProductName() + "</b> has been saved to your wishlist!",
+                    "Saved to Wishlist");
+        } else {
+            ValidationUtil.showInfo(this,
+                    "<b>" + selected.getProductName() + "</b> is already in your wishlist.",
+                    "Already in Wishlist");
+        }
+    }
+
+    // ==========================================
+    // ORDER RETURN / REFUND CONTROLS
+    // ==========================================
+
+    private void handleRequestOrderReturn() {
+        Order selected = getSelectedOrder();
+        if (selected == null) return;
+
+        if ("RETURN_REQUESTED".equalsIgnoreCase(selected.getOrderStatus())) {
+            ValidationUtil.showInfo(this,
+                    "A return request has already been logged for order <b>" + selected.getOrderNumber() + "</b> and is under review.",
+                    "Return Pending");
+            return;
+        }
+
+        if ("REFUNDED".equalsIgnoreCase(selected.getOrderStatus())) {
+            ValidationUtil.showInfo(this,
+                    "Order <b>" + selected.getOrderNumber() + "</b> has already been refunded.",
+                    "Already Refunded");
+            return;
+        }
+
+        if (!selected.isReturnable()) {
+            ValidationUtil.showWarning(this,
+                    "Returns can only be requested for delivered orders (Current status: " + selected.getOrderStatus() + ").",
+                    "Not Eligible for Return");
+            return;
+        }
+
+        OrderReturnDialog dialog = new OrderReturnDialog(this, selected, () -> {
+            applyOrderFilters();
+            refreshAdminOrdersTable();
+            refreshAdminReportsPanel();
+            updateNotificationBadge();
+        });
+        dialog.setVisible(true);
+    }
+
+    private void handleApproveReturnFromAdmin() {
+        Order selected = getSelectedAdminOrder();
+        if (selected == null) return;
+
+        if (!"RETURN_REQUESTED".equalsIgnoreCase(selected.getOrderStatus())) {
+            ValidationUtil.showInfo(this,
+                    "Order <b>" + selected.getOrderNumber() + "</b> is in status: <b>" + selected.getOrderStatus()
+                            + "</b>.<br/>(Only orders with status <b>RETURN_REQUESTED</b> can be approved for refund).",
+                    "Return Not Requested");
+            return;
+        }
+
+        boolean confirm = ValidationUtil.showConfirm(this,
+                "Approve return and issue full refund of <b>$" + String.format("%.2f", selected.getTotalAmount())
+                        + "</b> for order <b>" + selected.getOrderNumber() + "</b>?<br/>"
+                        + "This will replenish product inventory and mark payment as REFUNDED.",
+                "Confirm Return Approval");
+
+        if (confirm) {
+            OrderStore.approveReturn(selected);
+            catalogProducts.clear();
+            catalogProducts.addAll(ProductStore.getAllProducts());
+            applyAdminOrderFilters();
+            refreshCustomerCatalogTable(catalogProducts);
+            refreshAdminCatalogTable();
+            refreshAdminReportsPanel();
+            updateNotificationBadge();
+
+            ValidationUtil.showSuccess(this,
+                    "Return approved for order <b>" + selected.getOrderNumber() + "</b>.<br/>"
+                            + "Inventory has been replenished and customer notified.",
+                    "Return & Refund Processed");
+        }
     }
 
     private void handleLogout() {
