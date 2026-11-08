@@ -11,6 +11,10 @@ import com.qveto.ecommerce.util.CartStore;
 import com.qveto.ecommerce.util.CategoryStore;
 import com.qveto.ecommerce.util.CouponStore;
 import com.qveto.ecommerce.util.DBStatusUtil;
+import com.qveto.ecommerce.model.Address;
+import com.qveto.ecommerce.model.AuditLog;
+import com.qveto.ecommerce.util.AddressBookStore;
+import com.qveto.ecommerce.util.AuditStore;
 import com.qveto.ecommerce.util.OrderStore;
 import com.qveto.ecommerce.util.PaymentStore;
 import com.qveto.ecommerce.util.ProductStore;
@@ -764,7 +768,7 @@ public class DashboardFrame extends JFrame {
         }
 
         JDialog dialog = new JDialog(this, "Complete Order & Checkout", true);
-        dialog.setSize(480, 420);
+        dialog.setSize(520, 520);
         dialog.setLocationRelativeTo(this);
 
         JPanel panel = new JPanel(new GridBagLayout());
@@ -803,17 +807,73 @@ public class DashboardFrame extends JFrame {
         gbc.gridy = 1;
         panel.add(totalDesc, gbc);
 
-        // Shipping Address
+        // Shipping Address with Address Book selector
         gbc.gridy = 2;
-        panel.add(new JLabel("Confirm Shipping Address:"), gbc);
+        JPanel addressHeaderRow = new JPanel(new BorderLayout());
+        addressHeaderRow.setOpaque(false);
+        addressHeaderRow.add(new JLabel("Select Delivery Destination:"), BorderLayout.WEST);
 
-        JTextField addressField = new JTextField(currentUser.getAddress());
-        addressField.setPreferredSize(new Dimension(340, 32));
+        JButton manageAddressesBtn = new JButton("Manage Address Book");
+        manageAddressesBtn.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+        manageAddressesBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        addressHeaderRow.add(manageAddressesBtn, BorderLayout.EAST);
+        panel.add(addressHeaderRow, gbc);
+
+        // Address combo box
+        List<Address> savedAddresses = AddressBookStore.getAddresses(currentUser.getUserId());
+        if (savedAddresses.isEmpty() && currentUser.getAddress() != null && !currentUser.getAddress().trim().isEmpty()) {
+            Address initialAddr = new Address(0, currentUser.getUserId(), "Home", currentUser.getFullName(),
+                    currentUser.getAddress(), "Bengaluru", "Karnataka", "560001", currentUser.getPhone(), true);
+            AddressBookStore.addAddress(initialAddr);
+            savedAddresses = AddressBookStore.getAddresses(currentUser.getUserId());
+        }
+
+        DefaultComboBoxModel<Address> addressComboModel = new DefaultComboBoxModel<>();
+        for (Address addr : savedAddresses) {
+            addressComboModel.addElement(addr);
+        }
+
+        JComboBox<Address> addressCombo = new JComboBox<>(addressComboModel);
+        Address defaultAddr = AddressBookStore.getDefaultAddress(currentUser.getUserId());
+        if (defaultAddr != null) {
+            addressCombo.setSelectedItem(defaultAddr);
+        }
+
         gbc.gridy = 3;
+        panel.add(addressCombo, gbc);
+
+        // Editable Address Line Details Field for customized delivery instructions
+        gbc.gridy = 4;
+        panel.add(new JLabel("Delivery Address & Landmark Details:"), gbc);
+
+        JTextField addressField = new JTextField(defaultAddr != null ? defaultAddr.getFormattedAddress() : currentUser.getAddress());
+        addressField.setPreferredSize(new Dimension(340, 32));
+        gbc.gridy = 5;
         panel.add(addressField, gbc);
 
+        addressCombo.addActionListener(e -> {
+            Address selected = (Address) addressCombo.getSelectedItem();
+            if (selected != null) {
+                addressField.setText(selected.getFormattedAddress());
+            }
+        });
+
+        manageAddressesBtn.addActionListener(e -> {
+            AddressBookDialog bookDialog = new AddressBookDialog(this, currentUser, () -> {
+                addressComboModel.removeAllElements();
+                List<Address> refreshed = AddressBookStore.getAddresses(currentUser.getUserId());
+                for (Address a : refreshed) addressComboModel.addElement(a);
+                Address curDefault = AddressBookStore.getDefaultAddress(currentUser.getUserId());
+                if (curDefault != null) {
+                    addressCombo.setSelectedItem(curDefault);
+                    addressField.setText(curDefault.getFormattedAddress());
+                }
+            });
+            bookDialog.setVisible(true);
+        });
+
         // Payment Method Options
-        gbc.gridy = 4;
+        gbc.gridy = 6;
         panel.add(new JLabel("Select Payment Method:"), gbc);
 
         JComboBox<String> paymentCombo = new JComboBox<>(new String[]{
@@ -822,7 +882,7 @@ public class DashboardFrame extends JFrame {
                 "Credit / Debit Card (Online Gateway)",
                 "Net Banking (Instant Settle)"
         });
-        gbc.gridy = 5;
+        gbc.gridy = 7;
         panel.add(paymentCombo, gbc);
 
         // Action Buttons
@@ -866,6 +926,11 @@ public class DashboardFrame extends JFrame {
             // Persist order & deduct inventory stock
             OrderStore.placeOrder(newOrder);
             customerOrders.add(0, newOrder); // add to top of local orders list
+
+            // Audit journal logging
+            AuditStore.log(currentUser.getUsername(), currentUser.getRole(), "CHECKOUT", "ORDER_PLACED",
+                    "Order " + newOrderCode + " placed for $" + String.format("%.2f", grandTotal)
+                            + " (" + selectedPayment + ") delivered to: " + address);
 
             // Process payment transaction via PaymentStore / PaymentDAO
             Payment payment = PaymentStore.processPayment(newOrder.getOrderId(), selectedPayment, grandTotal);
@@ -1018,6 +1083,22 @@ public class DashboardFrame extends JFrame {
         editBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
         editBtn.addActionListener(e -> showEditProfileDialog());
         buttonRow.add(editBtn);
+
+        JButton addressBookBtn = new JButton("Manage Address Book");
+        addressBookBtn.setBackground(new Color(16, 185, 129));
+        addressBookBtn.setForeground(Color.WHITE);
+        addressBookBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        addressBookBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        addressBookBtn.addActionListener(e -> {
+            AddressBookDialog dlg = new AddressBookDialog(this, currentUser, () -> {
+                Address def = AddressBookStore.getDefaultAddress(currentUser.getUserId());
+                if (def != null) {
+                    profileAddressVal.setText("<html>" + def.getFormattedAddress() + "</html>");
+                }
+            });
+            dlg.setVisible(true);
+        });
+        buttonRow.add(addressBookBtn);
 
         JButton passBtn = new JButton("Change Password");
         passBtn.setBackground(new Color(75, 85, 99));
@@ -1291,6 +1372,14 @@ public class DashboardFrame extends JFrame {
         returnBtn.addActionListener(e -> handleRequestOrderReturn());
         actionRow.add(returnBtn);
 
+        JButton trackShipmentBtn = new JButton("📍 Track Shipment");
+        trackShipmentBtn.setBackground(new Color(37, 99, 235));
+        trackShipmentBtn.setForeground(Color.WHITE);
+        trackShipmentBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        trackShipmentBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        trackShipmentBtn.addActionListener(e -> handleTrackShipment());
+        actionRow.add(trackShipmentBtn);
+
         JButton viewDetailsBtn = new JButton("View Order Details / Invoice");
         viewDetailsBtn.setBackground(new Color(15, 23, 42));
         viewDetailsBtn.setForeground(Color.WHITE);
@@ -1367,6 +1456,15 @@ public class DashboardFrame extends JFrame {
         dialog.setVisible(true);
     }
 
+    private void handleTrackShipment() {
+        Order selected = getSelectedOrder();
+        if (selected == null) return;
+
+        String addr = selected.getShippingAddress() != null ? selected.getShippingAddress() : currentUser.getAddress();
+        OrderTrackingDialog dialog = new OrderTrackingDialog(this, selected, addr);
+        dialog.setVisible(true);
+    }
+
     private void handleCancelOrder() {
         Order selected = getSelectedOrder();
         if (selected == null) return;
@@ -1386,6 +1484,8 @@ public class DashboardFrame extends JFrame {
 
         if (confirm) {
             OrderStore.cancelOrder(selected);
+            AuditStore.log(currentUser.getUsername(), currentUser.getRole(), "ORDER_MANAGEMENT", "ORDER_CANCELLED",
+                    "Customer cancelled order " + selected.getOrderNumber() + "; inventory stock restored.");
             catalogProducts.clear();
             catalogProducts.addAll(ProductStore.getAllProducts());
 
@@ -1640,6 +1740,9 @@ public class DashboardFrame extends JFrame {
 
         EditProductDialog dialog = new EditProductDialog(this, selected, updatedProduct -> {
             ProductStore.updateProduct(updatedProduct);
+            AuditStore.log(currentUser.getUsername(), currentUser.getRole(), "INVENTORY", "PRODUCT_UPDATED",
+                    "Updated product '" + updatedProduct.getProductName() + "' (ID #" + updatedProduct.getProductId()
+                            + "): Stock=" + updatedProduct.getStockQuantity() + ", Price=$" + updatedProduct.getPrice());
             catalogProducts.clear();
             catalogProducts.addAll(ProductStore.getAllProducts());
             refreshAdminCatalogTable();
@@ -1737,6 +1840,9 @@ public class DashboardFrame extends JFrame {
             Product newProduct = new Product(0, 1, category, name, desc, price, stock);
 
             Product added = ProductStore.addProduct(newProduct);
+            AuditStore.log(currentUser.getUsername(), currentUser.getRole(), "INVENTORY", "PRODUCT_ADDED",
+                    "Added new product '" + newProduct.getProductName() + "' (Category: " + newProduct.getCategory()
+                            + ", Stock: " + newProduct.getStockQuantity() + ", Price: $" + newProduct.getPrice() + ")");
             catalogProducts.clear();
             catalogProducts.addAll(ProductStore.getAllProducts());
 
@@ -1790,6 +1896,8 @@ public class DashboardFrame extends JFrame {
 
         if (ValidationUtil.showConfirm(this, "Are you sure you want to delete product <b>" + name + "</b> (ID: #" + productId + ")?", "Confirm Delete")) {
             ProductStore.deleteProduct(productId);
+            AuditStore.log(currentUser.getUsername(), currentUser.getRole(), "INVENTORY", "PRODUCT_DELETED",
+                    "Deleted product '" + name + "' (ID #" + productId + ")");
             catalogProducts.clear();
             catalogProducts.addAll(ProductStore.getAllProducts());
             refreshAdminCatalogTable();
@@ -1860,6 +1968,22 @@ public class DashboardFrame extends JFrame {
         viewOrderBtn.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         viewOrderBtn.addActionListener(e -> handleAdminViewOrderDetails());
         toolBar.add(viewOrderBtn);
+
+        JButton trackShipmentAdminBtn = new JButton("📍 Track Shipment");
+        trackShipmentAdminBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        trackShipmentAdminBtn.setBackground(new Color(37, 99, 235));
+        trackShipmentAdminBtn.setForeground(Color.WHITE);
+        trackShipmentAdminBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        trackShipmentAdminBtn.addActionListener(e -> handleAdminTrackShipment());
+        toolBar.add(trackShipmentAdminBtn);
+
+        JButton auditLogBtn = new JButton("📜 Audit Journal");
+        auditLogBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        auditLogBtn.setBackground(new Color(15, 23, 42));
+        auditLogBtn.setForeground(Color.WHITE);
+        auditLogBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        auditLogBtn.addActionListener(e -> new AuditLogDialog(this).setVisible(true));
+        toolBar.add(auditLogBtn);
 
         JButton exportOrdersCsvBtn = new JButton("📊 Export CSV");
         exportOrdersCsvBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
@@ -1950,6 +2074,15 @@ public class DashboardFrame extends JFrame {
         dialog.setVisible(true);
     }
 
+    private void handleAdminTrackShipment() {
+        Order selected = getSelectedAdminOrder();
+        if (selected == null) return;
+
+        String addr = selected.getShippingAddress() != null ? selected.getShippingAddress() : "Customer Address on File";
+        OrderTrackingDialog dialog = new OrderTrackingDialog(this, selected, addr);
+        dialog.setVisible(true);
+    }
+
     private void handleAdminUpdateOrderStatus() {
         Order selected = getSelectedAdminOrder();
         if (selected == null) return;
@@ -1970,6 +2103,9 @@ public class DashboardFrame extends JFrame {
         if (newStatus != null && !newStatus.equalsIgnoreCase(current)) {
             OrderStore.updateStatus(selected.getOrderId(), newStatus);
             selected.setOrderStatus(newStatus);
+
+            AuditStore.log(currentUser.getUsername(), currentUser.getRole(), "ORDER_MANAGEMENT", "ORDER_STATUS_CHANGED",
+                    "Updated order " + selected.getOrderNumber() + " status from " + current + " to " + newStatus);
 
             // Synchronize payment settlement
             if ("DELIVERED".equalsIgnoreCase(newStatus)) {
@@ -2257,6 +2393,8 @@ public class DashboardFrame extends JFrame {
         if (confirm) {
             boolean success = UserStore.deleteUser(targetUserId);
             if (success) {
+                AuditStore.log(currentUser.getUsername(), currentUser.getRole(), "USER_MANAGEMENT", "USER_DEACTIVATED",
+                        "Deactivated account #" + targetUserId + " (" + targetUserName + " - " + targetUserRole + ")");
                 ValidationUtil.showSuccess(this, "Account <b>" + targetUserName + "</b> was successfully deactivated.", "Account Removed");
                 refreshAdminUsersTable();
             } else {
@@ -2335,6 +2473,14 @@ public class DashboardFrame extends JFrame {
         exportCsvBtn.addActionListener(e -> handleExportSalesAuditCSV());
         actionBtnRow.add(exportCsvBtn);
         actionBtnRow.add(exportBtn);
+
+        JButton auditLogReportBtn = new JButton("📜 Audit Journal");
+        auditLogReportBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        auditLogReportBtn.setBackground(new Color(15, 23, 42));
+        auditLogReportBtn.setForeground(Color.WHITE);
+        auditLogReportBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        auditLogReportBtn.addActionListener(e -> new AuditLogDialog(this).setVisible(true));
+        actionBtnRow.add(auditLogReportBtn);
         headerRow.add(actionBtnRow, BorderLayout.EAST);
         northPanel.add(headerRow, BorderLayout.NORTH);
 
@@ -3024,6 +3170,9 @@ public class DashboardFrame extends JFrame {
 
         if (confirm) {
             OrderStore.approveReturn(selected);
+            AuditStore.log(currentUser.getUsername(), currentUser.getRole(), "RETURNS_REFUNDS", "RETURN_APPROVED",
+                    "Approved return and issued refund for order " + selected.getOrderNumber()
+                            + " ($" + String.format("%.2f", selected.getTotalAmount()) + "); replenished inventory items.");
             catalogProducts.clear();
             catalogProducts.addAll(ProductStore.getAllProducts());
             applyAdminOrderFilters();

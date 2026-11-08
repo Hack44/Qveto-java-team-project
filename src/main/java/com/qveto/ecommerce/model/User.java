@@ -61,6 +61,10 @@ public class User {
         return email;
     }
 
+    public String getUsername() {
+        return email != null ? email : fullName;
+    }
+
     public void setEmail(String email) {
         this.email = email;
     }

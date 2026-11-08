@@ -86,9 +86,22 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
     * Top-Selling Products Velocity Leaderboard (`JTable` with ranking, volume, and revenue)
     * Multi-Tab Analytics Breakdown: Order Lifecycle Distribution, Category Revenue Breakdown, Customer Lifetime Value (CLV) Leaderboard, and Payment Channel Distribution
     * One-click Executive Performance Report text export (`qveto_executive_report.txt`) and Sales Audit CSV export (`ReportExportUtil`)
-  * Automated Regression & Integration Test Suite (`StoreWorkflowIntegrationTest.java`): 9-stage automated test suite verifying promotional coupon discounts, stock adjustments, order cancellations, CSV exports, date filtering, PDF generation, customer reviews, customer wishlist transfers, return request and refund approvals, and store notifications
+  * Customer Saved Multi-Address Book & Smart Checkout Destination Selector (`Address.java`, `AddressBookStore.java`, `AddressBookDialog.java`):
+    * Centralized multi-address directory supporting Home, Work, and Custom delivery destinations with primary/default designation
+    * Modal address manager dialog (`AddressBookDialog`) accessible directly from Customer Profile (`"Manage Address Book"`) and during order checkout
+    * Smart Checkout Dropdown: Pre-selects default shipping destination, allows quick selection between saved addresses, and includes 1-click shortcut to add new delivery addresses with instant synchronization
+  * Live Consignment Shipment Tracking & Transit Milestone Stepper (`OrderTrackingDialog.java`):
+    * Interactive courier consignment tracking modal accessible via `"📍 Track Shipment"` in both Customer Order History and Admin Orders management
+    * Carrier integration details (BlueDart Express, FedEx Air Logistics), deterministic Airway Bill (AWB) tracking number, and estimated delivery dates
+    * Time-stamped transit milestone progress bar and chronological checkpoint scan cards (Order Picked, Hub Arrival, Out for Delivery, Handed Over)
+    * 1-Click `"📋 Copy Tracking #"` to system clipboard and live simulated ping to courier gateway
+  * Enterprise Store Security & Operational Audit Activity Journal (`AuditLog.java`, `AuditStore.java`, `AuditLogDialog.java`):
+    * Centralized immutable audit journal capturing administrative and customer store events (Order status transitions, product restocks, price edits, return approvals, account deactivations)
+    * Dedicated Admin Audit Journal dialog (`AuditLogDialog`) with category filtering (`ORDER_MANAGEMENT`, `INVENTORY`, `STORE_SECURITY`, `RETURNS_REFUNDS`, `USER_MANAGEMENT`, `CHECKOUT`), fast keyword search, and detailed record inspector
+    * 1-Click RFC 4180 compliant CSV export (`Qveto_Store_Audit_Log_*.csv`) for compliance and regulatory reporting
+  * Automated Regression & Integration Test Suite (`StoreWorkflowIntegrationTest.java`): 11-stage automated test suite verifying promotional coupon discounts, stock adjustments, order cancellations, CSV exports, date filtering, PDF generation, customer reviews, customer wishlist transfers, return request and refund approvals, store notifications, customer address book management, and store audit activity logging
   * Real-Time Database Status Indicator (`DBStatusUtil`): Visual connectivity pill (`● MySQL Active` vs `○ Standalone Demo`) across login and dashboard headers
-  * Centralized Store Architecture (`UserStore`, `ProductStore`, `OrderStore`, `CategoryStore`, `CartStore`, `ReportStore`, `PaymentStore`, `CouponStore`, `ReviewStore`, `WishlistStore`, `NotificationStore`) coordinating between JDBC DAOs and resilient in-memory fallback state
+  * Centralized Store Architecture (`UserStore`, `ProductStore`, `OrderStore`, `CategoryStore`, `CartStore`, `ReportStore`, `PaymentStore`, `CouponStore`, `ReviewStore`, `WishlistStore`, `NotificationStore`, `AddressBookStore`, `AuditStore`) coordinating between JDBC DAOs and resilient in-memory fallback state
   * Centralized Form Validation Utility (`ValidationUtil`)
 * **Member 3:** Catalog, Cart & Order Placement Services
 * **Member 4:** Inventory Consistency, Invoices & Sales Reporting

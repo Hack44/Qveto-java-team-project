@@ -43,6 +43,8 @@ public class StoreWorkflowIntegrationTest {
         runTest("Customer Wishlist & Saved Items", StoreWorkflowIntegrationTest::testWishlistStoreOperations);
         runTest("Order Return / Refund & Stock Replenishment", StoreWorkflowIntegrationTest::testReturnRequestAndApprovalWorkflow);
         runTest("Store Notifications & Broadcast Hub", StoreWorkflowIntegrationTest::testNotificationCenterStore);
+        runTest("Customer Address Book & Multi-Destination Management", StoreWorkflowIntegrationTest::testAddressBookStoreOperations);
+        runTest("Store Audit Activity Journal & CSV Compliance Trail", StoreWorkflowIntegrationTest::testAuditStoreLoggingAndCsvExport);
 
         System.out.println("========================================================================");
         System.out.println(String.format("TEST EXECUTION COMPLETED: %d PASSED, %d FAILED", totalPassed, totalFailed));
@@ -322,5 +324,91 @@ public class StoreWorkflowIntegrationTest {
 
         NotificationStore.markAllAsRead(testUser, "CUSTOMER");
         assertEquals(0, NotificationStore.getUnreadCount(testUser, "CUSTOMER"), "All notifications should be marked read");
+    }
+
+    // ========================================================================
+    // 10. Customer Address Book & Multi-Destination Management Tests
+    // ========================================================================
+    private static void testAddressBookStoreOperations() {
+        int testUser = 901;
+        List<Address> addresses = AddressBookStore.getAddresses(testUser);
+        addresses.clear();
+
+        // 1. Add primary address
+        Address addr1 = new Address(0, testUser, "Home", "Alex Morgan",
+                "124 Tech Park Road, Whitefield", "Bengaluru", "Karnataka", "560066",
+                "+91 9876543210", true);
+        Address saved1 = AddressBookStore.addAddress(addr1);
+        assertTrue(saved1 != null && saved1.getAddressId() > 0, "Saved address should have positive ID");
+        assertTrue(saved1.isDefault(), "First added address should be marked as default");
+
+        // 2. Add second address
+        Address addr2 = new Address(0, testUser, "Work", "Alex Morgan",
+                "Tower B, Innovation Cyber City", "Bengaluru", "Karnataka", "560100",
+                "+91 9876543211", false);
+        Address saved2 = AddressBookStore.addAddress(addr2);
+        assertEquals(2, AddressBookStore.count(testUser), "AddressBookStore count should be 2");
+
+        // 3. Verify default address lookup
+        Address defaultAddr = AddressBookStore.getDefaultAddress(testUser);
+        assertEquals(saved1.getAddressId(), defaultAddr.getAddressId(), "Default address should match addr1");
+
+        // 4. Switch default address
+        boolean switched = AddressBookStore.setDefault(testUser, saved2.getAddressId());
+        assertTrue(switched, "setDefault should return true");
+        Address newDefault = AddressBookStore.getDefaultAddress(testUser);
+        assertEquals(saved2.getAddressId(), newDefault.getAddressId(), "Default address should now match addr2");
+        assertTrue(!saved1.isDefault(), "addr1 should no longer be default");
+
+        // 5. Update address
+        saved1.setStreetAddress("Suite 405, Prestige Tech Cloud");
+        boolean updated = AddressBookStore.updateAddress(saved1);
+        assertTrue(updated, "updateAddress should succeed");
+
+        // 6. Delete address
+        boolean deleted = AddressBookStore.deleteAddress(testUser, saved1.getAddressId());
+        assertTrue(deleted, "deleteAddress should succeed");
+        assertEquals(1, AddressBookStore.count(testUser), "AddressBookStore count should be 1 after deletion");
+    }
+
+    // ========================================================================
+    // 11. Store Audit Activity Journal & CSV Compliance Trail Tests
+    // ========================================================================
+    private static void testAuditStoreLoggingAndCsvExport() {
+        int initialCount = AuditStore.getLogCount();
+
+        // 1. Log administrative activity
+        AuditLog logged = AuditStore.log("admin_test", "ADMIN", "INVENTORY", "STOCK_ADJUSTMENT",
+                "Automated test restock: +50 units of Test Item SKU-999");
+        assertTrue(logged != null && logged.getLogId() > 0, "Logged audit entry must have positive ID");
+        assertTrue(AuditStore.getLogCount() > initialCount, "Audit count must increase after log()");
+
+        // 2. Retrieve by category
+        List<AuditLog> invLogs = AuditStore.getLogsByCategory("INVENTORY");
+        assertTrue(!invLogs.isEmpty(), "Inventory audit category should contain logged event");
+        assertEquals("INVENTORY", invLogs.get(0).getCategory(), "First log should match requested category");
+
+        // 3. Search logs
+        List<AuditLog> searchResults = AuditStore.searchLogs("SKU-999", "ALL");
+        assertTrue(!searchResults.isEmpty(), "Search for 'SKU-999' should return matching audit entry");
+        assertEquals(logged.getLogId(), searchResults.get(0).getLogId(), "Search match must correspond to logged entry");
+
+        // 4. Export CSV audit trail
+        File exportFile = new File("test_store_audit_export.csv");
+        try {
+            AuditStore.exportAuditCsv(exportFile);
+            assertTrue(exportFile.exists() && exportFile.length() > 0, "Exported audit CSV must exist and be non-empty");
+
+            String content = new String(Files.readAllBytes(exportFile.toPath()), StandardCharsets.UTF_8);
+            assertTrue(content.startsWith("LogID,Timestamp,Actor,Role,Category,Action,Details,IPAddress"),
+                    "CSV must contain valid RFC-compliant audit header");
+            assertTrue(content.contains("SKU-999"), "CSV must include logged audit payload");
+        } catch (Exception ex) {
+            throw new RuntimeException("Failed to verify audit CSV export: " + ex.getMessage(), ex);
+        } finally {
+            if (exportFile.exists()) {
+                exportFile.delete();
+            }
+        }
     }
 }
