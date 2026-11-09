@@ -16,7 +16,8 @@ The system features a **Dual-Engine Architecture**:
 * **Enterprise Live Mode:** Connects to MySQL via pre-leased connection pooling (`DBConnectionPool`) and exponential retry policies (`DatabaseRetryPolicy`).
 * **Resilient Standalone Demo Mode:** Automatically engages in-memory store caching if MySQL is offline, ensuring 100% feature availability and crash-free reviewer demonstrations.
 
-For the comprehensive project evaluation document, see [`PROJECT_REVIEW_DOSSIER.md`](PROJECT_REVIEW_DOSSIER.md).
+For the comprehensive project evaluation document, see [`PROJECT_REVIEW_DOSSIER.md`](PROJECT_REVIEW_DOSSIER.md).  
+For the complete printable evaluation guide and viva presentation cheatsheet, see [**`PROJECT_REVIEW_GUIDE.pdf`**](PROJECT_REVIEW_GUIDE.pdf).
 
 ---
 
