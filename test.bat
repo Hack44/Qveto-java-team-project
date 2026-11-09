@@ -1,14 +1,14 @@
 @echo off
-title Qveto Database Integrity and Transaction Test Runner
+title Qveto Automated Verification Test Runner
 cd /d "%~dp0"
 
 echo ========================================================
-echo   Running Qveto Database Integrity and Rollback Tests
+echo   Running Qveto Automated Verification Test Suites
 echo ========================================================
 echo.
 
 REM Compile all modules including verification test suite
-javac -d bin src/main/java/com/qveto/ecommerce/model/*.java src/main/java/com/qveto/ecommerce/dao/*.java src/main/java/com/qveto/ecommerce/util/*.java src/main/java/com/qveto/ecommerce/ui/*.java src/main/java/com/qveto/ecommerce/*.java
+javac -d bin src/main/java/com/qveto/ecommerce/model/*.java src/main/java/com/qveto/ecommerce/dao/*.java src/main/java/com/qveto/ecommerce/util/*.java src/main/java/com/qveto/ecommerce/ui/*.java src/main/java/com/qveto/ecommerce/*.java src/test/java/com/qveto/ecommerce/*.java
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
@@ -18,17 +18,24 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo.
-echo Running automated verification test suite...
+echo Running automated verification test suites...
 echo.
 
-set "CP=bin"
+set "CP=bin;src/main/resources"
 if exist "%USERPROFILE%\.m2\repository\com\mysql\mysql-connector-j\8.3.0\mysql-connector-j-8.3.0.jar" (
-    set "CP=bin;%USERPROFILE%\.m2\repository\com\mysql\mysql-connector-j\8.3.0\mysql-connector-j-8.3.0.jar"
+    set "CP=bin;src/main/resources;%USERPROFILE%\.m2\repository\com\mysql\mysql-connector-j\8.3.0\mysql-connector-j-8.3.0.jar"
 )
 
-REM Execute the DatabaseIntegrityTest suite
+echo --------------------------------------------------------
+echo [1/2] Executing Core Database & Persistence Integrity Test Suite...
+echo --------------------------------------------------------
 java -cp "%CP%" com.qveto.ecommerce.util.DatabaseIntegrityTest
 
 echo.
-pause
+echo --------------------------------------------------------
+echo [2/2] Executing End-to-End Store Workflow & Business Integration Test Suite...
+echo --------------------------------------------------------
+java -cp "%CP%" com.qveto.ecommerce.StoreWorkflowIntegrationTest
 
+echo.
+pause

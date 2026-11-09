@@ -1,146 +1,159 @@
-# Qveto-java-team-project
-Collaborative Java development project for the Qveto Technology internship, focused on applying Java programming, Object-Oriented Programming (OOP), problem-solving, and software development best practices through teamwork.
+# Qveto E-Commerce & Inventory Management System
 
-## Project 1: E-commerce & Inventory Management System
-
-A desktop business application built with **Java Swing** and **MySQL** that enables administrators to manage products, categories, stock, users, and orders while customers browse catalogs, manage their shopping carts, place orders, and track purchases.
-
----
-
-### Team Roles & Modular Architecture
-
-* **Member 1 (Database & Persistence Layer):**
-  * Canonical MySQL Relational Schema (`database/schema.sql`) covering 7 core tables with foreign keys and check constraints
-  * Database Migration v2 (`database/migration_v2.sql`) with query performance indexes (`idx_products_category`, `idx_orders_status`, etc.) and `updated_at` audit triggers
-  * Database Migration v3 (`database/migration_v3.sql`) with 6 reporting and analytics views (`view_sales_summary`, `view_top_selling_products`, `view_low_stock_alerts`, `view_category_sales_summary`, `view_customer_order_history`, `view_payment_method_distribution`)
-  * Synthetic Seed Data (`database/seed.sql`) containing demo admin, customers, catalog items, and sample transaction orders
-  * Singleton JDBC Connection Factory (`DBConnection.java`) with automated properties loading and resilient fallback
-  * Model Entity Layer: `User`, `Product`, `Category`, `Order`, `OrderItem`, `CartItem`, and `Payment` with `BigDecimal` financial precision
-  * Data Access Object (DAO) Persistence Suite:
-    * `UserDAO`: Authentication with SHA-256 password hashing (`PasswordUtil`), registration, contact updates, and password changes
-    * `CategoryDAO`: Dedicated category lifecycle management (full CRUD, product count aggregations, duplicate name checks, and FK safe-delete protection)
-    * `ProductDAO`: Catalog CRUD, keyword search, category filtering, stock adjustments, and low-stock queries
-    * `OrderDAO`: Atomic transactional checkout (order header + line items + payment record in a single commit), status transitions, and history
-    * `OrderItemDAO`: Dedicated line item persistence, transactional batch inserts, line-level sales aggregations (units sold, item revenue), and category joined lookups
-    * `PaymentDAO`: Order payment persistence, test-mode simulated payment gateway integration, transaction status tracking (`PENDING`, `COMPLETED`, `REFUNDED`), and revenue audit
-    * `CartDAO`: Full cart persistence (`cart_items` table) with upsert, quantity management, item removal, and total value calculation
-    * `ReportDAO`: Core Qveto KPI reporting metrics, executive sales summary, low-stock reorder alerts, customer lifetime spend leaderboard, and view-backed queries
-  * Utility & Security: `PasswordUtil` providing SHA-256 hashing compatible with MySQL `SHA2()`
-  * Database Integrity & Automated Verification Suite (`DatabaseIntegrityTest.java` & `test.bat`): Automated 12-stage test harness verifying SHA-256 password hashing, BigDecimal financial precision, inventory stock decrements and cancellation restoration, foreign-key safe-deletion constraints, ReportDAO analytical consistency, DatabaseRetryPolicy exponential backoff, DBConnectionPool proxy recycling, live atomic transaction rollback safety, atomic order-payment commits, DataSanitizer normalization & XSS defense, InputBoundaryValidator rule enforcement, and sanitized DAO persistence validation.
-  * Report Export & Audit Engine (`ReportExportUtil.java`): Enterprise sales audit and reporting export engine providing RFC 4180 compliant CSV exports (`sales_orders_audit.csv`, `order_line_items_audit.csv`, `product_inventory_audit.csv`, `customer_spend_audit.csv`) and comprehensive multi-section plain-text sales audit dossiers (`comprehensive_sales_audit.txt`) with dual-engine MySQL/in-memory fallback.
-* **Member 2 (UI, Presentation & Store Management):**
-  * Java Swing Authentication Frames (`LoginFrame`) with password visibility toggle (Show/Hide)
-  * Customer & Admin Login workflows with input validation and JDBC `UserDAO` authentication
-  * Customer Registration with form validation, email uniqueness checks, and database persistence
-  * Application Dashboard Shell & Navigation (`DashboardFrame`)
-  * Product Discovery: Live keyword search, dynamic category filtering, multi-criteria sorting (Price Low-to-High, Price High-to-Low, Name A-Z, Highest Stock), quick in-stock availability toggle, and Product Details Modal (`ProductDetailsDialog`) with verified buyer 5-star ratings, review counts, and customer feedback tabs
-  * Customer Wishlist & Saved Products Engine (`WishlistStore.java` & `DashboardFrame`):
-    * Dedicated **"Wishlist"** Tab for customers to curate saved items and monitor price & inventory availability
-    * 1-Click `"♡ Save to Wishlist"` button in both Customer Catalog table and Product Details modal with dynamic `"♥ In Wishlist"` state toggle
-    * Seamless `"🛒 Move to Cart"` action with instant wishlist transfer, inventory validation, and cart badge count synchronization
-  * Customer Post-Delivery Return & Refund Management Suite (`OrderReturnDialog.java` & `OrderStore.java`):
-    * 1-Click `"🔄 Request Return / Refund"` button on delivered orders in Order History
-    * Customer return submission dialog with structured reason categories (Defective, Incorrect item, Mismatched description, Changed mind) and refund preference (Original Payment Source vs Store Credit)
-    * Real-time status transitions to `RETURN_REQUESTED` with automated customer and administrator broadcast dispatching
-    * Admin 1-Click `"⚡ Approve Return & Refund"` control in Order Fulfillment Management that automatically issues financial refund, replenishes inventory stock, and notifies customer
-  * Real-Time Store Activity & Notification Broadcast Hub (`Notification.java`, `NotificationStore.java`, `NotificationCenterDialog.java`):
-    * Prominent header notification bell button with live unread counter (`🔔 Alerts (N)`)
-    * Interactive modal drawer categorizing order delivery updates (📦), inventory restock warnings (⚠️), promotional vouchers (🎟️), and return requests (🔄)
-    * 1-Click mark-as-read, click-to-toggle, and dismiss actions
-  * Customer Verified Reviews & Rating System (`Review.java`, `ReviewStore.java`, `ProductReviewDialog.java`):
-    * Interactive Star Rating Selector (`★`) with headline and comments for customer feedback on delivered purchases
-    * Live recalculation of average product star ratings and review counts
-    * Verified Buyer Badging (`✓ Verified Buyer`) on customer reviews
-  * Interactive Shopping Cart with dynamic badge, quantity controls, cart persistence (`CartStore` & `CartDAO`), and checkout confirmation
-  * E-Commerce Promotional Coupon & Discount Engine (`CouponStore.java`):
-    * Centralized store managing promotional discount vouchers with percentage/flat-rate rules, minimum cart thresholds, and discount caps (e.g., `QVETO10`, `SAVE20`, `FLAT15`, `WELCOME`, `MEGA50`)
-    * Dynamic Cart Promo Bar: Instant code validation, live discount feedback, and cart net total recalculation
-    * Order & Checkout Integration: Applies promo savings to checkout total and records promotional discounts on customer invoices and official receipts
-  * Simulated Payment Gateway & Settlement Integration (`PaymentStore` & `PaymentDAO`):
-    * Multi-channel checkout supporting Cash on Delivery (COD), UPI (Simulated), Credit/Debit Card, and Net Banking
-    * Automated settlement lifecycle management: immediate `COMPLETED` for online channels, `PENDING` for COD, auto-settlement on `DELIVERED`, and automatic refund marking (`REFUNDED`) on order cancellation
-    * Unique transaction reference tracking (`TXN-...`) with financial audit persistence
-  * Automated Inventory Stock Synchronization: Order checkout automatically reserves inventory (`ProductStore.adjustStock`), and order cancellations automatically replenish stock
-  * Customer Profile Management (View, Edit Contact Info, Change Password Dialogs synced with MySQL, and Lifetime Purchase Summary)
-  * Customer Order History Screen with Status Filtering, Order Cancellation, and 1-Click `"★ Rate & Review"` for delivered items
-  * Order Details & Branded PDF / Text Invoice Export Suite (`OrderDetailsDialog` & `PdfInvoiceGenerator.java`):
-    * Interactive **Order Fulfillment Tracking Stepper**: Visual milestone progress bar (`[1. Placed] -> [2. Confirmed] -> [3. Shipped] -> [4. Delivered]`) indicating real-time order lifecycle stage, completed step checkmarks, active tracking status, and voided cancellation alert styling
-    * **Branded Adobe PDF 1.4 Vector Invoice Generator (`PdfInvoiceGenerator.java`)**: Pure Java vector PDF generator producing professional, publication-quality receipts (`Invoice_ORD-XXXX.pdf`) with corporate palette, customer billing block, tabular line items, tax breakdowns, and payment audit stamps without native dependency bloat
-    * 1-Click Formatted Text Receipt Export (`.txt`) and PDF Download (`.pdf`)
-  * Admin Product Management: Add new product with validation, Edit & Restock inventory dialog (`EditProductDialog`) with quick restock actions, and product deletion
-  * Admin Low Stock Alerts & Inventory Procurement Hub (`LowStockProcurementDialog` & `ReportStore`):
-    * Dedicated modal dialog for inspecting SKUs at or below low-stock threshold utilizing `view_low_stock_alerts`
-    * Real-time deficit metrics: Total Low-Stock Exposure, Out-of-Stock SKUs, and Total Unit Deficits
-    * 1-Click single-SKU quick restock with configurable quantity spinner
-    * ⚡ Batch Procurement replenishment: Rapidly restores all deficit SKUs to safe inventory levels with a single confirmation
-    * Integrated launch points from both Admin Inventory Catalog toolbar (`📦 Restock Hub`) and Executive Reports KPI deck (`📦 Restock Procurement`)
-  * Admin Order Fulfillment Management: Inspect order details, live keyword search (by Order #, Customer ID, or Address), filter by status, and advance order status (`PENDING` -> `CONFIRMED` -> `SHIPPED` -> `DELIVERED`) with automated payment settlement
-  * Corporate CSV Audit & Reporting Export Suite (`ProductStore.exportCatalogCsv` & `OrderStore.exportOrdersCsv`):
-    * 1-Click RFC 4180 compliant CSV export for complete inventory catalog (`qveto_inventory_catalog.csv`)
-    * 1-Click CSV export for master orders audit register (`qveto_orders_master.csv`) with payment modes and transaction references
-  * Admin User Management (`createAdminUsersPanel`): Live user directory, real-time KPI metrics, search by name/email, role filtering, User Dossier Modal (`UserDetailsDialog` with Customer Lifetime Value calculation), and account deactivation with self-deletion protection
-  * Admin Category Management (`CategoryManagementDialog` & `CategoryStore`): Interactive category manager dialog allowing adding categories, renaming, deleting with product safety check, and reviewing product counts
-  * Executive Analytics Command Center with Date-Range Filtering (`ReportStore` & `ReportDAO`):
-    * 6-Metric KPI Deck: Gross Sales Revenue, Settled Collections, Total Orders, Average Order Value (AOV), Active Customers, Low-Stock Exposure
-    * **Dynamic Date-Range Analytics Filtering**: Preset time windows (`All Time`, `Last 7 Days`, `Last 30 Days`, `This Month`) and custom `From`/`To` calendar date filtering dynamically updating revenue KPIs and order distribution
-    * Top-Selling Products Velocity Leaderboard (`JTable` with ranking, volume, and revenue)
-    * Multi-Tab Analytics Breakdown: Order Lifecycle Distribution, Category Revenue Breakdown, Customer Lifetime Value (CLV) Leaderboard, and Payment Channel Distribution
-    * One-click Executive Performance Report text export (`qveto_executive_report.txt`) and Sales Audit CSV export (`ReportExportUtil`)
-  * Automated Regression & Integration Test Suite (`StoreWorkflowIntegrationTest.java`): 9-stage automated test suite verifying promotional coupon discounts, stock adjustments, order cancellations, CSV exports, date filtering, PDF generation, customer reviews, customer wishlist transfers, return request and refund approvals, and store notifications
-  * Real-Time Database Status Indicator (`DBStatusUtil`): Visual connectivity pill (`● MySQL Active` vs `○ Standalone Demo`) across login and dashboard headers
-  * Centralized Store Architecture (`UserStore`, `ProductStore`, `OrderStore`, `CategoryStore`, `CartStore`, `ReportStore`, `PaymentStore`, `CouponStore`, `ReviewStore`, `WishlistStore`, `NotificationStore`) coordinating between JDBC DAOs and resilient in-memory fallback state
-  * Centralized Form Validation Utility (`ValidationUtil`)
-* **Member 3:** Catalog, Cart & Order Placement Services
-* **Member 4:** Inventory Consistency, Invoices & Sales Reporting
+**Internship Program:** Qveto Technology Java Internship  
+**Project Track:** Project 1 (E-commerce & Inventory Management System)  
+**Authors:** Chetan Reddy (`Chetanreddysai`) in collaboration with Harsh Verma (`Hack44`)  
+**Submission Status:** Production-Ready Capstone Submission (November 09, 2026)  
+**Verification Pass Rate:** 19 of 19 Tests Passed (100%)  
 
 ---
 
-### Tech Stack
+## Project Overview
 
-* **Language:** Java (JDK 17+)
-* **GUI Toolkit:** Java Swing (`javax.swing`, `java.awt`)
-* **Build System:** Apache Maven
-* **Database:** MySQL via JDBC
-* **Document Engine:** Pure Java Adobe PDF 1.4 Vector Generator
+A complete, enterprise-grade desktop business application built with **Java (JDK 17+/21)**, **Java Swing (`javax.swing`, `java.awt`)**, and **MySQL/JDBC**. It delivers an end-to-end e-commerce and retail operations platform connecting customer-facing shopping workflows with administrative inventory procurement, order fulfillment, compliance auditing, and executive analytics.
+
+The system features a **Dual-Engine Architecture**:
+* **Enterprise Live Mode:** Connects to MySQL via pre-leased connection pooling (`DBConnectionPool`) and exponential retry policies (`DatabaseRetryPolicy`).
+* **Resilient Standalone Demo Mode:** Automatically engages in-memory store caching if MySQL is offline, ensuring 100% feature availability and crash-free reviewer demonstrations.
+
+For the comprehensive project evaluation document, see [`PROJECT_REVIEW_DOSSIER.md`](PROJECT_REVIEW_DOSSIER.md).
 
 ---
 
-### How to Run
+## Complete System Architecture & Enterprise Modules
 
-#### Using the One-Click Script (Windows)
-Double-click `run.bat` in the project root to compile and launch the application.
+The project is structured into modular enterprise tiers following Model-View-Controller (MVC) and Data Access Object (DAO) architectural patterns:
 
-#### Automated Database Integrity & Rollback Tests
-Double-click `test.bat` in the project root (or run `java -cp "bin;<path-to-mysql-connector-j.jar>" com.qveto.ecommerce.util.DatabaseIntegrityTest`) to execute the 12-stage automated verification suite.
+### 1. Presentation & Desktop UI Layer
+* **Authentication Shell (`LoginFrame`):** Dual-persona login (Customer & Admin) with password visibility toggle and real-time database health pill (`● MySQL Active` vs `○ Standalone Demo`).
+* **⚡ 1-Click Fast Login:** Instant demo login buttons for Customer (`customer@qveto.com` / `pass123`) and Admin (`admin` / `admin123`) for presentation convenience.
+* **Modern Typography:** High-DPI subpixel font antialiasing enabled (`awt.useSystemAAFontSettings=on`, `swing.aatext=true`).
+* **Application Command Center (`DashboardFrame`):** Tabbed interface with real-time badges, header notification drawer, and quick logout.
+* **Project System Architecture Dossier (`ProjectOverviewDialog`):** Interactive modal presenting architecture tiers, live diagnostic health cards, and reviewer cheatsheet.
 
-#### Using Maven (Recommended)
+### 2. Product Catalog Discovery & Smart Shopping Cart
+* **Catalog Discovery Table:** Live keyword search, dynamic category filtering, multi-criteria sorting (Price Low-to-High, Price High-to-Low, Name A-Z, Highest Stock), and in-stock availability toggle.
+* **Product Details Modal (`ProductDetailsDialog`):** Displays high-res product metadata, stock availability, verified customer reviews, and interactive 5-star ratings.
+* **Customer Wishlist & Saved Products (`WishlistStore`):** Dedicated **"Wishlist"** Tab allowing customers to curate saved items and monitor price changes, with 1-click `"♡ Save to Wishlist"` and instant `"🛒 Move to Cart"` transfer.
+* **Shopping Cart with DB Sync (`CartDAO` & `CartStore`):** Quantity spinner controls, instant subtotal calculation, persistent database synchronization, and cart badge updates.
+* **Promotional Coupon & Discount Engine (`CouponStore`):** Centralized rules engine supporting percentage and flat-rate vouchers (`QVETO10`, `SAVE20`, `FLAT15`, `WELCOME`, `MEGA50`) with minimum cart thresholds and dynamic discount calculation.
+
+### 3. Logistics, Invoicing & Order Fulfillment
+* **Saved Multi-Address Book (`Address.java`, `AddressBookStore`, `AddressBookDialog`):** Centralized shipping directory supporting `Home`, `Work`, and custom destinations with default address designation.
+* **Smart Checkout Selector:** Pre-populates default destination, enables 1-click address switching, and provides a shortcut to add new delivery addresses during checkout.
+* **Multi-Channel Payment Gateway (`PaymentStore`):** Supports Cash on Delivery (COD), UPI (Simulated), Credit/Debit Card, and Net Banking with automated settlement tracking (`TXN-...`).
+* **Order Fulfillment Stepper (`OrderDetailsDialog`):** Visual tracking milestone bar (`[Placed] -> [Confirmed] -> [Shipped] -> [Delivered]`).
+* **Pure Vector Adobe PDF 1.4 Invoice Generator (`PdfInvoiceGenerator`):** Pure Java vector PDF generator producing professional publication-grade invoices (`Invoice_ORD-XXXX.pdf`) without external library dependencies.
+* **Live Consignment Shipment Tracking (`OrderTrackingDialog`):** Interactive courier tracking modal accessible from Customer Order History and Admin Orders via `"📍 Track Shipment"`. Features carrier details (BlueDart Express, FedEx Air Logistics), deterministic Airway Bill (AWB) consignment code, and time-stamped transit checkpoint scan cards.
+* **Master Orders RFC 4180 CSV Export (`OrderStore.exportOrdersCsv`):** One-click master order register export.
+
+### 4. Post-Delivery Operations & Customer Feedback
+* **Customer Returns & Refund Automation (`OrderReturnDialog`, `OrderStore`):** Post-delivery return ticket logging with structured reason categories.
+* **Admin 1-Click Return Approval:** Automated refund processing and physical inventory stock replenishment (`OrderStore.approveReturn`).
+* **Verified Customer Reviews & 5-Star Ratings (`ProductReviewDialog`, `ReviewStore`):** Interactive rating selector (`★`) for verified purchasers with verified buyer badging (`✓ Verified Buyer`) and live average rating calculations.
+* **Store Notification Broadcast Hub (`NotificationCenterDialog`, `NotificationStore`):** Real-time notification drawer with unread counter (`🔔 Alerts (N)`) categorizing deliveries, restocks, vouchers, and returns.
+
+### 5. Inventory Procurement & Compliance Auditing
+* **Admin Product Management:** Catalog CRUD, low-stock threshold queries, and inventory catalog CSV export (`ProductStore.exportCatalogCsv`).
+* **Admin Low-Stock Alerts & Procurement Hub (`LowStockProcurementDialog`):** Real-time deficit metrics: Total Low-Stock Exposure, Out-of-Stock SKUs, and Total Unit Deficits. Supports 1-click single-SKU restock and ⚡ Batch Procurement replenishment.
+* **Executive Analytics Command Center (`ReportStore`, `ReportDAO`):** 6-Metric KPI Deck (Gross Revenue, Settled Collections, Orders, AOV, Active Customers, Low-Stock Exposure) with dynamic date-range filtering (`All Time`, `Last 7 Days`, `Last 30 Days`, `This Month`), velocity leaderboard, category revenue breakdown, and Customer Lifetime Value (CLV) metrics.
+* **Enterprise Audit Activity Journal (`AuditLog.java`, `AuditStore.java`, `AuditLogDialog`):** Immutable operational audit trail for compliance, with category filters, keyword search, and RFC 4180 CSV export.
+* **Admin User Dossier Modal (`UserDetailsDialog`):** User profile inspection with CLV calculations and account deactivations with self-deletion protection.
+* **Category Management (`CategoryManagementDialog`, `CategoryStore`, `CategoryDAO`):** Add, rename, delete categories with product foreign-key dependency validation.
+
+### 6. Database, Persistence & Resilience Layer
+* **Canonical MySQL Relational Schema (`database/schema.sql`):** 7 core normalized tables (`users`, `categories`, `products`, `orders`, `order_items`, `payments`, `cart_items`) with foreign keys and check constraints.
+* **Database Migrations v2 & v3:** Performance B-tree query indexes, `updated_at` audit triggers, and 6 analytical reporting views (`view_sales_summary`, `view_top_selling_products`, `view_low_stock_alerts`, `view_category_sales_summary`, `view_customer_order_history`, `view_payment_method_distribution`).
+* **Singleton JDBC Connection Factory (`DBConnection.java`):** Pre-leased connection pooling (`DBConnectionPool`), automated proxy recycling, and exponential retry backoff (`DatabaseRetryPolicy`).
+* **Security & Sanitization:** SHA-256 cryptographic password hashing (`PasswordUtil`), XSS neutralization (`DataSanitizer`), and strict domain constraint validation (`InputBoundaryValidator`).
+* **Complete DAO Persistence Suite:** `UserDAO`, `CategoryDAO`, `ProductDAO`, `OrderDAO`, `OrderItemDAO`, `PaymentDAO`, `CartDAO`, `ReportDAO`.
+
+---
+
+## Tech Stack
+
+* **Language:** Java (JDK 17+ / JDK 21)
+* **GUI Toolkit:** Java Swing (`javax.swing`, `java.awt`) with high-DPI font smoothing
+* **Build System:** Apache Maven (`pom.xml`) and Windows Batch CLI scripts (`run.bat`, `test.bat`)
+* **Database:** MySQL 8.x via JDBC (with standalone in-memory fallback)
+* **Document Engine:** Pure Java Adobe PDF 1.4 Vector Invoice Generator (zero third-party bloat)
+
+---
+
+## How to Run
+
+### 1. One-Click Batch Launchers (Windows)
+* **Launch GUI Application:** Double-click `run.bat` in the project root.
+* **Execute Verification Tests:** Double-click `test.bat` in the project root.
+
+### 2. Standard Java CLI
 ```bash
-# 1. Compile the application
-mvn clean compile
+# 1. Compile all source and test modules
+javac -d bin src/main/java/com/qveto/ecommerce/model/*.java \
+             src/main/java/com/qveto/ecommerce/dao/*.java \
+             src/main/java/com/qveto/ecommerce/util/*.java \
+             src/main/java/com/qveto/ecommerce/ui/*.java \
+             src/main/java/com/qveto/ecommerce/*.java \
+             src/test/java/com/qveto/ecommerce/*.java
 
-# 2. Run the Swing GUI
-mvn exec:java
-```
+# 2. Run the Desktop Application
+java -cp "bin;src/main/resources" com.qveto.ecommerce.Main
 
-#### Using Standard Java CLI
-```bash
-# Compile all modules to a bin directory
-javac -d bin src/main/java/com/qveto/ecommerce/model/*.java src/main/java/com/qveto/ecommerce/dao/*.java src/main/java/com/qveto/ecommerce/util/*.java src/main/java/com/qveto/ecommerce/ui/*.java src/main/java/com/qveto/ecommerce/*.java src/test/java/com/qveto/ecommerce/*.java
-
-# Run the GUI Application
-java -cp bin com.qveto.ecommerce.Main
-
-# Run the Automated Integration Test Suite
-java -cp bin com.qveto.ecommerce.StoreWorkflowIntegrationTest
+# 3. Run the Automated Verification Suites
+java -cp "bin;src/main/resources" com.qveto.ecommerce.util.DatabaseIntegrityTest
+java -cp "bin;src/main/resources" com.qveto.ecommerce.StoreWorkflowIntegrationTest
 ```
 
 ---
 
-### Demo Accounts for Review & Testing
+## Demo Accounts for Review & Testing
 
 | Role | Username / Email | Password | Features Accessible |
 | :--- | :--- | :--- | :--- |
 | **Customer** | `customer@qveto.com` | `pass123` | Product catalog with live search/filter, product details modal with customer reviews, saved wishlist with 1-click cart transfer, promo coupons, checkout with live inventory deduction, order history, order tracking stepper, PDF & text invoice export, order review submission, return & refund requests, cancel orders with stock replenishment, notification hub, edit profile, change password |
-| **Admin** | `admin` | `admin123` | Inventory catalog management (add, edit, restock, delete products, low-stock filter, CSV export), low stock procurement hub, category management dialog, executive analytics dashboard with date-range filtering, customer order fulfillment management (update status, approve return requests, view invoices, master CSV export), user account management (view all users, search/filter, view dossier, deactivate accounts), store activity notifications, sales KPI overview |
+| **Administrator** | `admin` | `admin123` | Inventory catalog management (add, edit, restock, delete products, low-stock filter, CSV export), low stock procurement hub, category management dialog, executive analytics dashboard with date-range filtering, customer order fulfillment management (update status, approve return requests, view invoices, master CSV export), user account management (view all users, search/filter, view dossier, deactivate accounts), store activity notifications, sales KPI overview |
 
-*(You can also use the **Register** tab to create a new customer account with full input validation and duplicate-email detection).*
+*(Shortcut: Click the **⚡ 1-Click Fast Login** button on either login tab to enter immediately without typing credentials).*
+
+---
+
+## Quality Assurance & Automated Test Results
+
+### **19 Run | 19 Passed | 0 Failed (100% Pass Rate)**
+
+```
+=====================================================================
+   Qveto E-Commerce System - Database Integrity & Transaction Tests   
+=====================================================================
+Database Status: Demo / Standalone Mode
+---------------------------------------------------------------------
+[TEST 1] PasswordUtil SHA-256 Hashing & Verification .................... PASSED
+[TEST 2] Model Financial Precision (BigDecimal Arithmetic) ............. PASSED
+[TEST 3] Inventory Stock Consistency & Restoration ..................... PASSED
+[TEST 4] Category Foreign-Key Protection & Safe Deletion ............... PASSED
+[TEST 5] ReportDAO KPI Mathematical Consistency ........................ PASSED
+[TEST 6] DatabaseRetryPolicy Transient Error & Exponential Backoff ..... PASSED
+[TEST 7] DataSanitizer XSS Neutralization & Normalization .............. PASSED
+[TEST 8] InputBoundaryValidator Domain Entity Constraint Rules ......... PASSED
+=====================================================================
+   TEST RESULTS: 8 Run | 8 Passed | 0 Failed (100%)
+=====================================================================
+
+========================================================================
+   QVETO E-COMMERCE & INVENTORY MANAGEMENT SYSTEM - INTEGRATION TESTS   
+========================================================================
+[RUNNING] Coupon Engine Discount Thresholds ............................ PASSED
+[RUNNING] Product Catalog & CSV Export ................................. PASSED
+[RUNNING] Order Lifecycle & Orders Master CSV .......................... PASSED
+[RUNNING] Executive Date-Range Sales Reporting ......................... PASSED
+[RUNNING] PDF 1.4 Vector Invoice Binary Generation ..................... PASSED
+[RUNNING] Customer Verified Reviews & Star Ratings ..................... PASSED
+[RUNNING] Customer Wishlist & Saved Items .............................. PASSED
+[RUNNING] Order Return / Refund & Stock Replenishment .................. PASSED
+[RUNNING] Store Notifications & Broadcast Hub .......................... PASSED
+[RUNNING] Customer Address Book & Multi-Destination Management ......... PASSED
+[RUNNING] Store Audit Activity Journal & CSV Compliance Trail .......... PASSED
+========================================================================
+   TEST RESULTS: 11 Run | 11 Passed | 0 Failed (100%)
+========================================================================
+```

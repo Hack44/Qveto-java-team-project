@@ -12,6 +12,10 @@ import javax.swing.UIManager;
  */
 public class Main {
     public static void main(String[] args) {
+        // Enable subpixel text antialiasing and high-DPI scaling
+        System.setProperty("awt.useSystemAAFontSettings", "on");
+        System.setProperty("swing.aatext", "true");
+
         SwingUtilities.invokeLater(() -> {
             try {
                 // Set system native look and feel for modern window decoration and controls

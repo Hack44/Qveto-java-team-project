@@ -86,12 +86,23 @@ public class LoginFrame extends JFrame {
 
         mainPanel.add(tabbedPane, BorderLayout.CENTER);
 
-        // --- Footer Note ---
-        JPanel footerPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        // --- Footer Note & Project Dossier ---
+        JPanel footerPanel = new JPanel(new GridLayout(2, 1, 0, 4));
         footerPanel.setBackground(Color.WHITE);
-        footerPanel.setBorder(new EmptyBorder(5, 10, 15, 10));
+        footerPanel.setBorder(new EmptyBorder(4, 10, 14, 10));
 
-        JLabel demoHint = new JLabel("<html><center><font color='#718096' size='2'>Demo Accounts: Customer: <b>customer@qveto.com</b> (pass123) | Admin: <b>admin</b> (admin123)</font></center></html>");
+        JPanel linkRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
+        linkRow.setOpaque(false);
+        JButton overviewBtn = new JButton("ℹ️ System Architecture & Review Dossier");
+        overviewBtn.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        overviewBtn.setBackground(new Color(241, 245, 249));
+        overviewBtn.setForeground(new Color(30, 41, 59));
+        overviewBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        overviewBtn.addActionListener(e -> new ProjectOverviewDialog(this).setVisible(true));
+        linkRow.add(overviewBtn);
+
+        JLabel demoHint = new JLabel("<html><center><font color='#718096' size='2'>Demo Accounts: Customer: <b>customer@qveto.com</b> (pass123) | Admin: <b>admin</b> (admin123)</font></center></html>", SwingConstants.CENTER);
+        footerPanel.add(linkRow);
         footerPanel.add(demoHint);
         mainPanel.add(footerPanel, BorderLayout.SOUTH);
 
@@ -157,13 +168,32 @@ public class LoginFrame extends JFrame {
         JButton loginBtn = createPrimaryButton("Login as Customer", new Color(37, 99, 235));
         loginBtn.addActionListener(this::handleCustomerLogin);
         gbc.gridy = 5;
-        gbc.insets = new Insets(16, 0, 8, 0);
+        gbc.insets = new Insets(16, 0, 6, 0);
         panel.add(loginBtn, gbc);
+
+        // 1-Click Fast Demo Login
+        JButton demoCustomerBtn = new JButton("⚡ 1-Click Fast Login (Demo Customer)");
+        demoCustomerBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        demoCustomerBtn.setBackground(new Color(240, 253, 244));
+        demoCustomerBtn.setForeground(new Color(22, 101, 52));
+        demoCustomerBtn.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(187, 247, 208)),
+                new EmptyBorder(8, 12, 8, 12)
+        ));
+        demoCustomerBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        demoCustomerBtn.addActionListener(e -> {
+            customerEmailField.setText("customer@qveto.com");
+            customerPasswordField.setText("pass123");
+            handleCustomerLogin(null);
+        });
+        gbc.gridy = 6;
+        gbc.insets = new Insets(4, 0, 6, 0);
+        panel.add(demoCustomerBtn, gbc);
 
         // Switch to Register Link
         JButton switchBtn = createLinkButton("Don't have an account? Register here");
         switchBtn.addActionListener(e -> tabbedPane.setSelectedIndex(2)); // switch to Register tab
-        gbc.gridy = 6;
+        gbc.gridy = 7;
         gbc.insets = new Insets(4, 0, 0, 0);
         panel.add(switchBtn, gbc);
 
@@ -223,8 +253,27 @@ public class LoginFrame extends JFrame {
         JButton adminLoginBtn = createPrimaryButton("Login as Admin", new Color(17, 24, 39));
         adminLoginBtn.addActionListener(this::handleAdminLogin);
         gbc.gridy = 6;
-        gbc.insets = new Insets(12, 0, 8, 0);
+        gbc.insets = new Insets(12, 0, 6, 0);
         panel.add(adminLoginBtn, gbc);
+
+        // 1-Click Fast Demo Admin Login
+        JButton demoAdminBtn = new JButton("⚡ 1-Click Fast Login (Demo Admin)");
+        demoAdminBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        demoAdminBtn.setBackground(new Color(254, 242, 242));
+        demoAdminBtn.setForeground(new Color(153, 27, 27));
+        demoAdminBtn.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(254, 202, 202)),
+                new EmptyBorder(8, 12, 8, 12)
+        ));
+        demoAdminBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        demoAdminBtn.addActionListener(e -> {
+            adminUsernameField.setText("admin");
+            adminPasswordField.setText("admin123");
+            handleAdminLogin(null);
+        });
+        gbc.gridy = 7;
+        gbc.insets = new Insets(4, 0, 8, 0);
+        panel.add(demoAdminBtn, gbc);
 
         return panel;
     }
