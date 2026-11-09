@@ -2,6 +2,14 @@
 title Qveto Automated Verification Test Runner
 cd /d "%~dp0"
 
+REM Ensure Java 21 compiler and runtime are in PATH
+where javac >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    if exist "C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot\bin\javac.exe" (
+        set "PATH=C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot\bin;%PATH%"
+    )
+)
+
 echo ========================================================
 echo   Running Qveto Automated Verification Test Suites
 echo ========================================================
