@@ -99,6 +99,10 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
     * Centralized immutable audit journal capturing administrative and customer store events (Order status transitions, product restocks, price edits, return approvals, account deactivations)
     * Dedicated Admin Audit Journal dialog (`AuditLogDialog`) with category filtering (`ORDER_MANAGEMENT`, `INVENTORY`, `STORE_SECURITY`, `RETURNS_REFUNDS`, `USER_MANAGEMENT`, `CHECKOUT`), fast keyword search, and detailed record inspector
     * 1-Click RFC 4180 compliant CSV export (`Qveto_Store_Audit_Log_*.csv`) for compliance and regulatory reporting
+  * Final Review & System Architecture Dossier (`ProjectOverviewDialog.java` & `PROJECT_REVIEW_DOSSIER.md`):
+    * Dedicated modal dialog accessible from login and dashboard headers presenting modular architecture tiers, team member divisions, live health cards, and reviewer cheatsheet
+    * ⚡ **1-Click Fast Login:** Instant demo login buttons on both Customer and Admin tabs for review presentation convenience
+    * Comprehensive Capstone Submission Dossier documented in [`PROJECT_REVIEW_DOSSIER.md`](PROJECT_REVIEW_DOSSIER.md)
   * Automated Regression & Integration Test Suite (`StoreWorkflowIntegrationTest.java`): 11-stage automated test suite verifying promotional coupon discounts, stock adjustments, order cancellations, CSV exports, date filtering, PDF generation, customer reviews, customer wishlist transfers, return request and refund approvals, store notifications, customer address book management, and store audit activity logging
   * Real-Time Database Status Indicator (`DBStatusUtil`): Visual connectivity pill (`● MySQL Active` vs `○ Standalone Demo`) across login and dashboard headers
   * Centralized Store Architecture (`UserStore`, `ProductStore`, `OrderStore`, `CategoryStore`, `CartStore`, `ReportStore`, `PaymentStore`, `CouponStore`, `ReviewStore`, `WishlistStore`, `NotificationStore`, `AddressBookStore`, `AuditStore`) coordinating between JDBC DAOs and resilient in-memory fallback state
@@ -123,8 +127,10 @@ A desktop business application built with **Java Swing** and **MySQL** that enab
 #### Using the One-Click Script (Windows)
 Double-click `run.bat` in the project root to compile and launch the application.
 
-#### Automated Database Integrity & Rollback Tests
-Double-click `test.bat` in the project root (or run `java -cp "bin;<path-to-mysql-connector-j.jar>" com.qveto.ecommerce.util.DatabaseIntegrityTest`) to execute the 12-stage automated verification suite.
+#### Automated Verification & Integration Test Harness
+Double-click `test.bat` in the project root to compile and execute the complete 19-stage verification suite:
+* **8 Database Integrity & Resilience Tests (`DatabaseIntegrityTest`)**
+* **11 Store Workflow & UI Integration Tests (`StoreWorkflowIntegrationTest`)**
 
 #### Using Maven (Recommended)
 ```bash

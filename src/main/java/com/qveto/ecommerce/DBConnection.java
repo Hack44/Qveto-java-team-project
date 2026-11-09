@@ -27,22 +27,30 @@ public class DBConnection {
     private static volatile boolean usePool = true;
 
     static {
-        try (InputStream input = DBConnection.class
+        InputStream input = DBConnection.class
                 .getClassLoader()
-                .getResourceAsStream("db.properties")) {
+                .getResourceAsStream("db.properties");
 
-            if (input == null) {
-                throw new IllegalStateException(
-                    "db.properties not found in src/main/resources");
+        if (input == null) {
+            java.io.File localFile = new java.io.File("src/main/resources/db.properties");
+            if (localFile.exists()) {
+                try {
+                    input = new java.io.FileInputStream(localFile);
+                } catch (java.io.FileNotFoundException ignored) {
+                }
             }
+        }
 
-            properties.load(input);
-
-            String poolEnabledProp = properties.getProperty("db.pool.enabled", "true");
-            usePool = Boolean.parseBoolean(poolEnabledProp.trim());
-
-        } catch (IOException e) {
-            throw new ExceptionInInitializerError(e);
+        if (input != null) {
+            try (InputStream stream = input) {
+                properties.load(stream);
+                String poolEnabledProp = properties.getProperty("db.pool.enabled", "true");
+                usePool = Boolean.parseBoolean(poolEnabledProp.trim());
+            } catch (IOException e) {
+                System.err.println("[DBConnection] Failed to load db.properties: " + e.getMessage());
+            }
+        } else {
+            System.err.println("[DBConnection] db.properties not found; operating in standalone mode.");
         }
     }
 
@@ -83,11 +91,11 @@ public class DBConnection {
         return DriverManager.getConnection(url, user, password);
     }
 
-    private static void validateCredentials() {
+    private static void validateCredentials() throws SQLException {
         String password = properties.getProperty("db.password");
         if (password == null || password.isBlank()
                 || password.equals("REPLACE_WITH_YOUR_MYSQL_PASSWORD")) {
-            throw new IllegalStateException(
+            throw new SQLException(
                 "Set your MySQL password in your local db.properties file.");
         }
     }

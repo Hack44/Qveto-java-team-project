@@ -188,6 +188,15 @@ public class DashboardFrame extends JFrame {
         });
         userPanel.add(notificationBtn);
 
+        JButton dossierBtn = new JButton("ℹ️ Project Dossier");
+        dossierBtn.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        dossierBtn.setBackground(new Color(30, 58, 102));
+        dossierBtn.setForeground(Color.WHITE);
+        dossierBtn.setFocusPainted(false);
+        dossierBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        dossierBtn.addActionListener(e -> new ProjectOverviewDialog(this).setVisible(true));
+        userPanel.add(dossierBtn);
+
         JLabel userLabel = new JLabel("Welcome, " + currentUser.getFullName() + " (" + currentUser.getRole() + ")");
         userLabel.setFont(new Font("Segoe UI", Font.PLAIN, 13));
         userLabel.setForeground(new Color(220, 230, 245));
