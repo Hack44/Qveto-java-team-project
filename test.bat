@@ -27,13 +27,13 @@ if exist "%USERPROFILE%\.m2\repository\com\mysql\mysql-connector-j\8.3.0\mysql-c
 )
 
 echo --------------------------------------------------------
-echo [1/2] Executing DatabaseIntegrityTest (Member 1)...
+echo [1/2] Executing Core Database & Persistence Integrity Test Suite...
 echo --------------------------------------------------------
 java -cp "%CP%" com.qveto.ecommerce.util.DatabaseIntegrityTest
 
 echo.
 echo --------------------------------------------------------
-echo [2/2] Executing StoreWorkflowIntegrationTest (Member 2)...
+echo [2/2] Executing End-to-End Store Workflow & Business Integration Test Suite...
 echo --------------------------------------------------------
 java -cp "%CP%" com.qveto.ecommerce.StoreWorkflowIntegrationTest
 
